@@ -13,6 +13,13 @@ class ParchisClient:
         self.socket = None
         self.conectado = False
         self.running = False
+
+        self._last_missing = None
+        self._last_conectados = None
+        self._last_requeridos = None
+
+        # Estado de administrador
+        self.es_admin = False
         
         # Información del jugador
         self.mi_nombre = ""
@@ -20,6 +27,9 @@ class ParchisClient:
         self.mi_id = -1
         
         # Estado del juego
+        self.conectados = 0
+        self.requeridos = proto.MIN_JUGADORES
+
         self.juego_iniciado = False
         self.es_mi_turno = False
         self.jugadores = []
@@ -151,21 +161,26 @@ class ParchisClient:
         """Maneja un mensaje recibido del servidor"""
         tipo = mensaje.get("tipo")
         self.log_debug(f"Procesando mensaje tipo: {tipo}")
-        
+
         if tipo == proto.MSG_BIENVENIDA:
             self.mi_color = mensaje["color"]
             self.mi_id = mensaje["jugador_id"]
             print(f"\n🎨 Te asignaron el color: {self.mi_color.upper()}")
             print(f"👤 Tu ID: {self.mi_id}")
-        
+
         elif tipo == proto.MSG_ESPERANDO:
-            conectados = mensaje["conectados"]
-            requeridos = mensaje["requeridos"]
+            conectados = mensaje.get("conectados",0)
+            requeridos = mensaje.get("requeridos",proto.MIN_JUGADORES)
+            # Guardar estado para el pre-juego
+            self.conectados = conectados
+            self.requeridos = requeridos
             print(f"\n⏳ Esperando jugadores... ({conectados}/{requeridos})")
-        
+
         elif tipo == proto.MSG_INICIO_JUEGO:
             self.juego_iniciado = True
-            self.jugadores = mensaje["jugadores"]
+            self.jugadores = mensaje.get("jugadores",[])
+            # Actualizar contador local
+            self.conectados = len(self.jugadores)
             print("\n" + "="*60)
             print("🎮 ¡EL JUEGO HA COMENZADO! 🎮".center(60))
             print("="*60)
@@ -174,13 +189,13 @@ class ParchisClient:
                 marca = "⭐" if j["color"] == self.mi_color else "  "
                 print(f"{marca} {j['nombre']} ({j['color'].upper()})")
             print("="*60 + "\n")
-        
+
         elif tipo == proto.MSG_TURNO:
             nombre = mensaje["nombre"]
             color = mensaje["color"]
             era_mi_turno_anterior = self.es_mi_turno
             self.es_mi_turno = (color == self.mi_color)
-            
+
             # ⭐ CLAVE: Resetear estado cuando ES mi turno (nuevo o mantenido)
             if self.es_mi_turno:
                 # Si no era mi turno antes, o si era mi turno pero cambió algo, resetear
@@ -194,7 +209,7 @@ class ParchisClient:
                         self.dados_lanzados = False
                         self.esperando_dados = False
                         self.esperando_movimiento = False
-                        self.log_debug("🔄 Manteniendo turno por dobles - reseteando solo dados_lanzados")
+                        self.log_debug("🔄 Manteniendo turno por dobles - reseteando solo datos_lanzados")
                     else:
                         # Si no era doble y sigue siendo mi turno, algo raro pasó - resetear todo
                         self.resetear_estado_dados()
@@ -203,14 +218,14 @@ class ParchisClient:
                 # No es mi turno - resetear flags de espera
                 self.esperando_dados = False
                 self.esperando_movimiento = False
-            
+
             print("\n" + "─"*60)
             if self.es_mi_turno:
                 print(f"🎯 ES TU TURNO 🎯".center(60))
             else:
                 print(f"⏳ Turno de {nombre} ({color.upper()})".center(60))
             print("─"*60)
-        
+
         elif tipo == proto.MSG_DADOS:
             self.ultimo_dado1 = mensaje["dado1"]
             self.ultimo_dado2 = mensaje["dado2"]
@@ -218,44 +233,59 @@ class ParchisClient:
             self.ultimo_es_doble = mensaje["es_doble"]
             self.dados_lanzados = True
             self.esperando_dados = False
-            
+
             # ⭐ Solo mostrar resultado si son MIS dados
             if self.es_mi_turno:
                 dobles_msg = "¡DOBLES! 🎉" if self.ultimo_es_doble else ""
                 print(f"\n🎲 RESULTADO: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma} {dobles_msg}")
-                
+
                 if self.ultimo_es_doble:
                     print("🔄 ¡Sacaste dobles! Puedes sacar una ficha de la cárcel y mantener tu turno.")
                 else:
                     print("➡️ Sin dobles. Mueve una ficha y tu turno terminará.")
-        
+
         elif tipo == proto.MSG_TABLERO:
+            # El servidor envía la estructura completa del tablero; la guardamos tal cual
             self.estado_tablero = mensaje
+            # También actualizamos la lista local de jugadores si viene incluida
+            if "jugadores" in mensaje:
+                self.jugadores = mensaje["jugadores"]
             self.log_debug("Estado del tablero actualizado")
-        
+
         elif tipo == proto.MSG_MOVIMIENTO_OK:
             nombre = mensaje["nombre"]
             color = mensaje["color"]
             desde = mensaje["desde"]
             hasta = mensaje["hasta"]
             accion = mensaje.get("accion", "mover")
-            
+
             if accion == "liberar_ficha":
                 print(f"🔓 {nombre} ({color}) liberó ficha automáticamente → C{hasta + 1}")
             else:
                 desde_str = "CÁRCEL" if desde == -1 else f"C{desde + 1}"
                 print(f"✅ {nombre} ({color}) movió ficha de {desde_str} → C{hasta + 1}")
-            
+
             self.esperando_movimiento = False
-        
+
+        elif tipo == proto.MSG_CAPTURA:
+            # Handler para notificar una captura (si el servidor usa este mensaje)
+            capturado = mensaje.get("capturado", {})
+            quien = capturado.get("nombre", mensaje.get("nombre", "Desconocido"))
+            color = capturado.get("color", mensaje.get("color", "??"))
+            ficha_id = capturado.get("ficha_id", mensaje.get("ficha_id", -1))
+            try:
+                print(f"\n⚠️ {quien} ({color}) ha sido CAPTURADO: Ficha {ficha_id + 1} enviada a cárcel")
+            except Exception:
+                print(f"\n⚠️ {quien} ({color}) ha sido CAPTURADO y una ficha fue enviada a cárcel")
+
         elif tipo == proto.MSG_ERROR:
-            error_msg = mensaje['mensaje']
+            error_msg = mensaje.get('mensaje', 'Error desconocido')
             print(f"\n❌ Error: {error_msg}")
-            
+
             # Resetear flags de espera
             self.esperando_dados = False
             self.esperando_movimiento = False
-        
+
         elif tipo == proto.MSG_VICTORIA:
             ganador = mensaje["ganador"]
             color = mensaje["color"]
@@ -266,14 +296,28 @@ class ParchisClient:
                 print(f"🏆 {ganador} ({color.upper()}) HA GANADO 🏆".center(60))
             print("🏆"*30 + "\n")
             self.running = False
-        
+
         elif tipo == proto.MSG_JUGADOR_DESCONECTADO:
-            nombre = mensaje["nombre"]
-            color = mensaje["color"]
+            nombre = mensaje.get("nombre", "Desconocido")
+            color = mensaje.get("color", "??")
             print(f"\n⚠️ {nombre} ({color}) se ha desconectado")
-        
+
         elif tipo == proto.MSG_INFO:
-            print(f"\nℹ️ {mensaje['mensaje']}")
+            # Mensajes informativos generales.
+            info_text = mensaje.get('mensaje', '')
+            print(f"\nℹ️ {info_text}")
+
+            # SOLO marcar como admin si el servidor incluye el flag explícito 'es_admin'
+            es_admin_flag = mensaje.get("es_admin", None)
+            if es_admin_flag is not None:
+                self.es_admin = bool(es_admin_flag)
+                if self.es_admin:
+                    self.log_debug("🔑 Marca local: soy admin (flag es_admin True)")
+                else:
+                    self.log_debug("🔑 Marca local: NO soy admin (flag es_admin False)")
+            # Si el servidor NO incluyó 'es_admin' no tocar el flag local (no hay fallback por texto)
+
+
     
     def enviar(self, mensaje):
         """Envía un mensaje al servidor"""
@@ -564,86 +608,176 @@ class ParchisClient:
             return opcion, opciones
         except:
             return "0", opciones
-    
+
     def ejecutar(self):
-        """Loop principal del cliente mejorado"""
+        """Loop principal del cliente mejorado (incluye flujo pre-juego para que el admin pueda iniciar)."""
         print("\n" + "="*60)
         print("🎲 CLIENTE DE PARCHÍS 🎲".center(60))
         print("="*60)
-        
+
         nombre = input("Ingresa tu nombre: ").strip()
         if not nombre:
             nombre = f"Jugador_{int(time.time()) % 1000}"
-        
+
         if not self.conectar(nombre):
             return
-        
+
         print("\n⏳ Esperando que el juego comience...")
-        
-        # Loop principal mejorado
-        while self.running and self.conectado:
-            # Procesar mensajes pendientes SIEMPRE
+
+        # Inicializar variables de control de impresión (evitar spam)
+        if not hasattr(self, "_last_conectados"):
+            self._last_conectados = None
+        if not hasattr(self, "_last_requeridos"):
+            self._last_requeridos = None
+        if not hasattr(self, "_last_missing"):
+            self._last_missing = None
+
+        # Pequeño warm-up para procesar mensajes que lleguen inmediatamente después del CONNECT
+        for _ in range(12):
             self.procesar_mensajes()
-            
-            # Si no es mi turno o el juego no ha iniciado, esperar
-            if not self.juego_iniciado or not self.es_mi_turno:
-                time.sleep(0.2)
-                continue
-            
-            # Es mi turno - mostrar menú
-            opcion, opciones = self.menu_turno()
-            
-            # Procesar opción
+            if getattr(self, "conectados", 0) > 0:
+                break
+            time.sleep(0.03)
+
+        # ------------------ Bucle PRE-JUEGO ------------------
+        try:
+            while self.running and self.conectado and not self.juego_iniciado:
+                # Leer mensajes y actualizar estado
+                self.procesar_mensajes()
+
+                conectados = getattr(self, "conectados", 0)
+                requeridos = getattr(self, "requeridos", proto.MIN_JUGADORES)
+
+                # Mostrar solo si cambió (para evitar spam)
+                if (conectados != self._last_conectados) or (requeridos != self._last_requeridos):
+                    print(f"\nConectados: {conectados} / {proto.MAX_JUGADORES}")
+                    self._last_conectados = conectados
+                    self._last_requeridos = requeridos
+
+                # Si soy admin, ofrezco iniciar partida (input bloqueante sólo para admin)
+                if getattr(self, "es_admin", False):
+                    if conectados < proto.MIN_JUGADORES:
+                        faltan = proto.MIN_JUGADORES - conectados
+                        # Mostrar una vez hasta que cambie faltan
+                        if self._last_missing != faltan:
+                            print(f"(No puedes iniciar aún: faltan {faltan} jugador(es))")
+                            self._last_missing = faltan
+                        time.sleep(0.5)
+                        continue
+
+                    # hay suficientes jugadores
+                    self._last_missing = None
+                    try:
+                        cmd = input("Eres admin. Escribe 'start' para iniciar la partida o Enter para refrescar: ").strip().lower()
+                    except KeyboardInterrupt:
+                        print("\n\n⚠️ Interrupción por teclado durante espera previa...")
+                        self.desconectar()
+                        return
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo input: {e}")
+                        time.sleep(0.5)
+                        continue
+
+                    if cmd == "start":
+                        print("🔔 Enviando solicitud de inicio (MSG_LISTO) al servidor...")
+                        try:
+                            self.enviar(proto.mensaje_listo())
+                        except AttributeError:
+                            print("❌ Error: proto.mensaje_listo() no existe en client/protocol.py")
+                        except Exception as e:
+                            print(f"❌ Error enviando MSG_LISTO: {e}")
+                        # esperar a que servidor responda
+                        time.sleep(0.4)
+                        continue
+
+                    # si presionó Enter -> refrescar
+                    time.sleep(0.2)
+                else:
+                    # no admin -> no bloqueante
+                    time.sleep(0.5)
+
+            # Si salimos por desconexión
+            if not self.running or not self.conectado:
+                self.desconectar()
+                return
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Interrupción por teclado durante espera previa...")
+            self.desconectar()
+            return
+        except Exception as e:
+            print(f"\n❌ Error en fase previa al juego: {e}")
             try:
-                opcion_num = int(opcion)
-                if opcion_num < 1 or opcion_num > len(opciones):
-                    print("⚠️ Opción no válida")
+                self.desconectar()
+            except Exception:
+                pass
+            return
+
+        # ------------------ Loop principal del juego (turnos) ------------------
+        try:
+            while self.running and self.conectado:
+                self.procesar_mensajes()
+
+                if not self.juego_iniciado or not self.es_mi_turno:
+                    time.sleep(0.2)
                     continue
-                
-                accion = opciones[opcion_num - 1]
-                
-                if "Lanzar dados" in accion:
-                    print("\n🎲 Lanzando dados...")
-                    self.enviar(proto.mensaje_lanzar_dados())
-                    
-                    # Esperar resultado específicamente
-                    if self.esperar_respuesta_dados():
-                        print("✅ Dados recibidos correctamente")
-                    else:
-                        print("❌ Error recibiendo dados")
-                
-                elif "Sacar ficha" in accion:
-                    print("\n🔓 Intentando sacar ficha de la cárcel...")
-                    self.enviar(proto.mensaje_sacar_carcel())
-                    self.esperar_respuesta_movimiento()
-                
-                elif "Mover ficha en juego" in accion:
-                    self.elegir_y_mover_ficha()
-                
-                elif "Ver mis fichas" in accion:
-                    self.mostrar_mis_fichas()
-                    input("\nPresiona Enter para continuar...")
-                
-                elif "Ver tablero completo" in accion:
-                    self.mostrar_tablero_completo()
-                    input("\nPresiona Enter para continuar...")
-                
-                elif "Ver tablero visual" in accion:
-                    self.mostrar_tablero_visual()
-                    input("\nPresiona Enter para continuar...")
-                
-                elif "Salir" in accion:
-                    print("\n👋 Saliendo del juego...")
-                    break
-                
-            except ValueError:
-                print("⚠️ Ingresa un número válido")
-                continue
-            except Exception as e:
-                print(f"❌ Error procesando opción: {e}")
-                continue
-        
-        self.desconectar()
+
+                opcion, opciones = self.menu_turno()
+
+                try:
+                    opcion_num = int(opcion)
+                    if opcion_num < 1 or opcion_num > len(opciones):
+                        print("⚠️ Opción no válida")
+                        continue
+
+                    accion = opciones[opcion_num - 1]
+
+                    if "Lanzar dados" in accion:
+                        print("\n🎲 Lanzando dados...")
+                        self.enviar(proto.mensaje_lanzar_dados())
+                        if self.esperar_respuesta_dados():
+                            print("✅ Dados recibidos correctamente")
+                        else:
+                            print("❌ Error recibiendo dados")
+
+                    elif "Sacar ficha" in accion:
+                        print("\n🔓 Intentando sacar ficha de la cárcel...")
+                        self.enviar(proto.mensaje_sacar_carcel())
+                        self.esperar_respuesta_movimiento()
+
+                    elif "Mover ficha en juego" in accion:
+                        self.elegir_y_mover_ficha()
+
+                    elif "Ver mis fichas" in accion:
+                        self.mostrar_mis_fichas()
+                        input("\nPresiona Enter para continuar...")
+
+                    elif "Ver tablero completo" in accion:
+                        self.mostrar_tablero_completo()
+                        input("\nPresiona Enter para continuar...")
+
+                    elif "Ver tablero visual" in accion:
+                        self.mostrar_tablero_visual()
+                        input("\nPresiona Enter para continuar...")
+
+                    elif "Salir" in accion:
+                        print("\n👋 Saliendo del juego...")
+                        break
+
+                except ValueError:
+                    print("⚠️ Ingresa un número válido")
+                    continue
+                except Exception as e:
+                    print(f"❌ Error procesando opción: {e}")
+                    continue
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Interrupción recibida...")
+        except Exception as e:
+            print(f"\n❌ Error inesperado en el loop principal: {e}")
+        finally:
+            self.desconectar()
+
     
     def elegir_y_mover_ficha(self):
         """Permite al jugador elegir qué ficha mover con información detallada"""

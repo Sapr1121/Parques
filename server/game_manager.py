@@ -13,11 +13,16 @@ class GameManager:
         self.tablero = Table()
         self.jugadores = []
         self.clientes = {}
+        self.admin_cliente = None
+        self.admin_id = None
         self.turno_actual = 0
         self.juego_iniciado = False
         self.juego_terminado = False
         self.lock = threading.RLock()
         
+        # Nuevo: ID monotónico para jugadores
+        self.next_player_id = 0
+
         # Estado de los últimos dados lanzados
         self.ultimo_dado1 = 0
         self.ultimo_dado2 = 0
@@ -34,32 +39,42 @@ class GameManager:
         self.debe_avanzar_turno = False
     
     def agregar_jugador(self, socket_cliente, nombre):
+        """
+        Agrega un jugador al juego.
+        Retorna: (color, error, es_admin)
+          - color: string del color asignado (o None si error)
+          - error: mensaje de error (o None si exito)
+          - es_admin: True si es el primer jugador (administrador)
+        """
         with self.lock:
             logger.debug(f"🔒 Agregando jugador {nombre}")
-            
+
+            # Validar límite de jugadores
             if len(self.jugadores) >= proto.MAX_JUGADORES:
-                return None, "Servidor lleno"
-            
+                logger.warning("Intento de agregar jugador pero el servidor está lleno")
+                return None, "Servidor lleno", False
+
+            # Determinar colores disponibles
             colores_usados = [j.color for j in self.jugadores]
             colores_disponibles = [c for c in proto.COLORES if c not in colores_usados]
-            
+
             if not colores_disponibles:
-                return None, "No hay colores disponibles"
-            
+                logger.warning("No hay colores disponibles al agregar jugador")
+                return None, "No hay colores disponibles", False
+
             color = colores_disponibles[0]
-            jugador_id = len(self.jugadores)
-            
+            jugador_id = self.next_player_id
+            self.next_player_id += 1  # Incrementar para el próximo jugador
+
             usuario = User(nombre, color)
-            
+
             # Crear fichas bloqueadas en la cárcel
             for i in range(proto.FICHAS_POR_JUGADOR):
                 ficha = tkn.gameToken(color, proto.ESTADO_BLOQUEADO)
-                if hasattr(ficha, 'id'):
-                    ficha.id = i
-                else:
-                    ficha.id = i
+                ficha.id = i  # asignar id directamente
                 usuario.agregar_ficha(ficha)
-            
+
+            # Añadir a lista de jugadores y mapping de clientes
             self.jugadores.append(usuario)
             self.clientes[socket_cliente] = {
                 "jugador": usuario,
@@ -67,29 +82,102 @@ class GameManager:
                 "color": color,
                 "id": jugador_id
             }
-            
-            logger.info(f"✅ Jugador {nombre} agregado como {color} (ID: {jugador_id})")
-            return color, None
+
+            # Gestionar admin
+            es_admin = False
+            if not self.admin_cliente:
+                self.admin_cliente = socket_cliente
+                self.admin_id = jugador_id
+                usuario.es_admin = True
+                es_admin = True
+                logger.info(f"🔑 {nombre} (ID {jugador_id}) designado como administrador del servidor")
+            else:
+                usuario.es_admin = False
+
+            logger.info(f"✅ Jugador {nombre} agregado como {color} (ID: {jugador_id}, Admin: {es_admin})")
+            return color, None, es_admin
     
     def eliminar_jugador(self, socket_cliente):
+        """
+        Elimina el jugador asociado al socket_cliente.
+        Si el jugador eliminado era admin, promueve al siguiente jugador
+        (el primero en la lista restante) como nuevo admin.
+        Retorna: (nombre, color, admin_promoted)
+        - nombre, color: del jugador eliminado (o (None, None) si no existía)
+        - admin_promoted: dict con keys {'socket','id','nombre','color'} si se promovió a alguien,
+                            o None si no hubo promoción (por ejemplo no quedaban jugadores).
+        """
         with self.lock:
             logger.debug("🔒 Eliminando jugador")
-            
-            if socket_cliente in self.clientes:
-                info = self.clientes[socket_cliente]
-                jugador = info["jugador"]
-                
-                if jugador in self.jugadores:
-                    # Ajustar turno actual si es necesario
-                    jugador_index = self.jugadores.index(jugador)
-                    if jugador_index <= self.turno_actual and self.turno_actual > 0:
-                        self.turno_actual -= 1
-                    
-                    self.jugadores.remove(jugador)
-                
+
+            if socket_cliente not in self.clientes:
+                return None, None, None
+
+            info = self.clientes[socket_cliente]
+            jugador = info["jugador"]
+            nombre = info.get("nombre")
+            color = info.get("color")
+
+            # Ajustar turno actual si es necesario y remover de la lista de jugadores
+            try:
+                jugador_index = self.jugadores.index(jugador)
+                if jugador_index <= self.turno_actual and self.turno_actual > 0:
+                    self.turno_actual -= 1
+                self.jugadores.remove(jugador)
+            except ValueError:
+                logger.warning(f"Jugador {nombre} no encontrado en lista de jugadores")
+
+            # Eliminar del mapping de clientes
+            try:
                 del self.clientes[socket_cliente]
-                return info["nombre"], info["color"]
-            return None, None
+            except KeyError:
+                logger.warning(f"Socket {socket_cliente} no encontrado en mapping de clientes al eliminar")
+
+            admin_promoted = None
+
+            # Gestionar cambio de admin si es necesario
+            if self.admin_cliente == socket_cliente:
+                logger.info(f"El administrador {nombre} se ha desconectado")
+                self.admin_cliente = None
+                self.admin_id = None
+
+                # Si hay jugadores restantes, promover al primero de la lista
+                if self.jugadores:
+                    # Primero limpiar flags es_admin en todos los jugadores restantes
+                    for p in self.jugadores:
+                        try:
+                            p.es_admin = False
+                        except Exception:
+                            # si la estructura del objeto no tiene es_admin, ignorar
+                            pass
+
+                    nuevo_admin = self.jugadores[0]
+                    # Buscar el socket correspondiente en el mapping de clientes
+                    for sock, data in list(self.clientes.items()):
+                        if data.get("jugador") is nuevo_admin:
+                            self.admin_cliente = sock
+                            self.admin_id = data.get("id")
+                            try:
+                                nuevo_admin.es_admin = True
+                            except Exception:
+                                pass
+                            admin_promoted = {
+                                "socket": sock,
+                                "id": data.get("id"),
+                                "nombre": data.get("nombre"),
+                                "color": data.get("color")
+                            }
+                            logger.info(f"🔑 Nuevo administrador: {data.get('nombre')} (ID: {data.get('id')})")
+                            break
+
+                    if not self.admin_cliente:
+                        logger.warning("No se pudo asignar nuevo administrador (no se encontró socket correspondiente)")
+                else:
+                    logger.info("No quedan jugadores, juego sin administrador")
+
+            logger.info(f"✅ Jugador {nombre} ({color}) eliminado")
+            return nombre, color, admin_promoted
+
     
     def manejar_desconexion_en_turno(self, socket_cliente):
         """Maneja cuando se desconecta el jugador que tiene el turno"""

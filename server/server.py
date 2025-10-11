@@ -77,84 +77,124 @@ class ParchisServer:
                     logger.error(f"Error inesperado: {e}")
     
     def manejar_cliente(self, cliente_socket, addr):
-        """Maneja la comunicación con un cliente específico"""
+        """Maneja la comunicación con un cliente específico (robusto con buffer y raw_decode)."""
         nombre = "Desconocido"
+        conectado_correctamente = False
+
         try:
             logger.debug(f"Iniciando manejo de cliente {addr}")
-            
+
+            # Timeout corto para el handshake inicial (esperar CONECTAR)
             cliente_socket.settimeout(30.0)
-            
-            # Esperar mensaje de conexión
-            data = self.recibir_mensaje(cliente_socket)
-            if not data:
-                logger.warning(f"No se recibió mensaje inicial de {addr}")
-                return
-            
-            mensaje = self.parsear_mensaje(data)
-            if not mensaje:
-                logger.warning(f"Mensaje inicial inválido de {addr}")
-                self.enviar(cliente_socket, proto.mensaje_error("JSON inválido"))
-                return
-            
-            if mensaje["tipo"] != proto.MSG_CONECTAR:
-                logger.warning(f"Protocolo inválido de {addr}: {mensaje.get('tipo', 'UNKNOWN')}")
-                self.enviar(cliente_socket, proto.mensaje_error("Protocolo inválido"))
-                return
-            
-            nombre = mensaje.get("nombre", f"Jugador_{addr[1]}")
-            logger.info(f"Cliente {addr} solicita conectarse como '{nombre}'")
-            
-            # Agregar jugador
-            color, error = self.game_manager.agregar_jugador(cliente_socket, nombre)
-            
-            if error:
-                logger.warning(f"{nombre} no pudo conectarse: {error}")
-                self.enviar(cliente_socket, proto.mensaje_error(error))
-                return
-            
-            logger.info(f"{nombre} conectado como {color.upper()}")
-            
-            # Enviar bienvenida
-            jugador_id = self.game_manager.clientes[cliente_socket]["id"]
-            self.enviar(cliente_socket, proto.mensaje_bienvenida(color, jugador_id, nombre))
-            
-            # Notificar estado de espera
-            conectados = len(self.game_manager.jugadores)
-            self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES))
-            
-            # Verificar si se puede iniciar el juego
-            if not self.game_manager.juego_iniciado and self.game_manager.puede_iniciar():
-                logger.info(f"¡Hay {conectados} jugadores! Iniciando juego...")
-                self.iniciar_juego()
-            
-            cliente_socket.settimeout(None)
-            
-            # Loop principal de comunicación
-            logger.debug(f"Iniciando loop de comunicación para {nombre}")
+
+            buffer = ""
+            decoder = json.JSONDecoder()
+
+            # Loop principal de lectura y parseo robusto
             while self.running:
-                data = self.recibir_mensaje(cliente_socket)
-                if not data:
-                    logger.debug(f"Cliente {nombre} cerró conexión")
+                try:
+                    data = cliente_socket.recv(4096)
+                    if not data:
+                        logger.debug(f"Cliente {addr} cerró conexión (recv=0)")
+                        break
+
+                    # Intentar decodificar chunk recibido
+                    try:
+                        buffer += data.decode('utf-8')
+                    except UnicodeDecodeError as e:
+                        logger.warning(f"Error de decodificación desde {addr}: {e} - ignorando chunk")
+                        continue
+
+                # Extraer todos los JSON completos del buffer
+                    while buffer.strip():
+                        try:
+                            mensaje, idx = decoder.raw_decode(buffer)
+                            buffer = buffer[idx:].lstrip()
+                            logger.debug(f"Mensaje bruto recibido de {addr}: {mensaje}")
+
+                            # Si aún no hicimos el handshake de CONECTAR, procesarlo primero
+                            if not conectado_correctamente:
+                                # Verificar que sea mensaje de conexión
+                                if mensaje.get("tipo") != proto.MSG_CONECTAR:
+                                    logger.warning(f"Protocolo inválido de {addr}: {mensaje.get('tipo', 'UNKNOWN')}")
+                                    self.enviar(cliente_socket, proto.mensaje_error("Protocolo inválido: se esperaba CONECTAR"))
+                                    return
+
+                                nombre = mensaje.get("nombre", f"Jugador_{addr[1]}")
+                                logger.info(f"Cliente {addr} solicita conectarse como '{nombre}'")
+
+                                # Agregar jugador al game_manager (ahora retorna es_admin)
+                                color, error, es_admin = self.game_manager.agregar_jugador(cliente_socket, nombre)
+
+                                if error:
+                                    logger.warning(f"{nombre} no pudo conectarse: {error}")
+                                    self.enviar(cliente_socket, proto.mensaje_error(error))
+                                    return
+
+                                logger.info(f"{nombre} conectado como {color.upper()} (admin={es_admin})")
+
+                                # Enviar bienvenida
+                                jugador_id = self.game_manager.clientes[cliente_socket]["id"]
+                                self.enviar(cliente_socket, proto.mensaje_bienvenida(color, jugador_id, nombre))
+
+                                # Notificar estado de espera a todos
+                                conectados = len(self.game_manager.jugadores)
+                                self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES))
+
+                                # ---- NO iniciar automáticamente aquí ----
+                                # El inicio ahora lo controla el administrador mediante MSG_LISTO.
+                                # Informar al admin cómo iniciar y notificar al resto quién es el admin.
+
+                                if es_admin:
+                                    # Notificar al admin privado cómo iniciar
+                                    self.enviar(cliente_socket, proto.mensaje_info(
+                                        "Eres el administrador. Para iniciar la partida envía MSG_LISTO. "
+                                        f"Se requiere al menos {proto.MIN_JUGADORES} jugadores.", es_admin=True
+                                    ))
+                                    # Informar al resto (broadcast) que existe un admin
+                                    self.broadcast(proto.mensaje_info(f"{nombre} es el administrador y podrá iniciar la partida cuando esté listo."))
+                                else:
+                                    # Informar al nuevo jugador quién es el admin actual (si existe)
+                                    admin_sock = getattr(self.game_manager, "admin_cliente", None)
+                                    if admin_sock:
+                                        admin_info = self.game_manager.clientes.get(admin_sock, {})
+                                        admin_nombre = admin_info.get("nombre", "Administrador")
+                                        self.enviar(cliente_socket, proto.mensaje_info(f"El administrador actual es: {admin_nombre}"))
+
+                                # Handshake completado: quitar timeout bloqueante
+                                cliente_socket.settimeout(None)
+                                conectado_correctamente = True
+                                continue
+
+                            # Si ya estamos conectados, procesar mensajes normales
+                            if conectado_correctamente:
+                                logger.debug(f"Procesando mensaje de {nombre}: {mensaje}")
+                                self.procesar_mensaje(cliente_socket, mensaje)
+
+                        except json.JSONDecodeError:
+                            # JSON incompleto en buffer; esperar más datos
+                            break
+
+                except socket.timeout:
+                    logger.warning(f"Timeout de recv para cliente {addr}")
                     break
-                
-                mensaje = self.parsear_mensaje(data)
-                if mensaje:
-                    logger.debug(f"Mensaje recibido de {nombre}: {mensaje}")
-                    self.procesar_mensaje(cliente_socket, mensaje)
-                else:
-                    logger.warning(f"Mensaje inválido de {nombre}")
-                
-        except socket.timeout:
-            logger.warning(f"Timeout para cliente {addr}")
-        except ConnectionResetError:
-            logger.info(f"Cliente {addr} desconectado abruptamente")
+                except ConnectionResetError:
+                    logger.info(f"Cliente {addr} desconectado abruptamente (ConnectionResetError)")
+                    break
+                except socket.error as e:
+                    logger.error(f"Error de socket en recv para {addr}: {e}")
+                    break
+                except Exception as e:
+                    logger.error(f"Error inesperado manejando recv para {addr}: {e}")
+                    break
+
         except Exception as e:
-            logger.error(f"Error con cliente {addr}: {e}")
-        
+            logger.error(f"Error en manejar_cliente para {addr}: {e}")
+
         finally:
             logger.debug(f"Limpiando cliente {nombre} ({addr})")
             self.limpiar_cliente(cliente_socket, nombre)
-    
+
     def recibir_mensaje(self, cliente_socket):
         """Recibe un mensaje del cliente con manejo de errores"""
         try:
@@ -176,59 +216,154 @@ class ParchisServer:
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.error(f"Error parseando mensaje: {e}")
             return None
-    
+        
     def limpiar_cliente(self, cliente_socket, nombre):
-        """Limpia los recursos de un cliente desconectado"""
+        """Limpia los recursos de un cliente desconectado.
+
+        - Quita socket de clientes_activos.
+        - Llama a game_manager.eliminar_jugador(), que ahora devuelve
+        (nombre_elim, color_elim, admin_promoted).
+        - Si hubo promoción de admin, notifica PRIVADAMENTE al nuevo admin
+        con proto.mensaje_info(..., es_admin=True) y hace broadcast informativo.
+        - Hace broadcast de MSG_JUGADOR_DESCONECTADO.
+        - Si el juego estaba en curso, delega el manejo de la desconexión al game_manager
+        y notifica el nuevo turno si aplica.
+        - Cierra el socket (si aún está abierto).
+        """
         try:
-            self.clientes_activos.discard(cliente_socket)
-            
-            nombre_real, color = self.game_manager.eliminar_jugador(cliente_socket)
+            # Intentar eliminar de la lista de activos (no lanza si no existe)
+            try:
+                self.clientes_activos.discard(cliente_socket)
+            except Exception:
+                # clientes_activos puede ser set/otra estructura; ignorar errores leves
+                pass
+
+            # Llamar a eliminar_jugador -> ahora devuelve admin_promoted si hubo promoción
+            nombre_real, color, admin_promoted = self.game_manager.eliminar_jugador(cliente_socket)
+
+            # Si el jugador existía, notificar su desconexión a todos
             if nombre_real:
                 logger.info(f"{nombre_real} ({color}) desconectado")
-                self.broadcast(proto.crear_mensaje(
-                    proto.MSG_JUGADOR_DESCONECTADO,
-                    nombre=nombre_real,
-                    color=color
-                ))
-                
-                if (self.game_manager.juego_iniciado and 
-                    not getattr(self.game_manager, 'juego_terminado', False)):
+                # Notificar a todos que un jugador se desconectó
+                try:
+                    msg_desc = proto.crear_mensaje(proto.MSG_JUGADOR_DESCONECTADO, nombre=nombre_real, color=color)
+                    self.broadcast(msg_desc)
+                except Exception:
+                    logger.exception("Error enviando MSG_JUGADOR_DESCONECTADO en broadcast")
+
+            # Si hubo promoción de admin, notificar PRIVADAMENTE al nuevo admin y hacer broadcast informativo
+            if admin_promoted:
+                try:
+                    nuevo_sock = admin_promoted.get("socket")
+                    nuevo_nombre = admin_promoted.get("nombre", "Administrador")
+                    # Mensaje privado al nuevo admin con flag es_admin=True
+                    try:
+                        self.enviar(nuevo_sock, proto.mensaje_info(
+                            "Has sido promovido a administrador. Para iniciar la partida envía MSG_LISTO.",
+                            es_admin=True
+                        ))
+                        logger.info(f"Notificado PRIVADAMENTE a nuevo admin: {nuevo_nombre}")
+                    except Exception:
+                        logger.exception("Error enviando mensaje privado al nuevo admin")
+
+                    # Broadcast informativo al resto (sin es_admin)
+                    try:
+                        self.broadcast(proto.mensaje_info(f"El administrador actual es: {nuevo_nombre}"))
+                    except Exception:
+                        logger.exception("Error haciendo broadcast del nuevo administrador")
+                except Exception:
+                    logger.exception("Error procesando admin_promoted en limpiar_cliente")
+            
+            try:
+                naveg = len(self.game_manager.jugadores)
+                self.broadcast(proto.mensaje_esperando(naveg, proto.MIN_JUGADORES))
+            except Exception:
+                logger.exception("Error enviando MSG_ESPERANDO tras desconexión")
+
+            # Si el juego estaba en curso, delegar manejo de desconexión en el game_manager
+            try:
+                if (self.game_manager.juego_iniciado and
+                        not getattr(self.game_manager, 'juego_terminado', False)):
+                    # Manejar efectos en el turno actual / fichas / etc.
                     self.game_manager.manejar_desconexion_en_turno(cliente_socket)
+                    # Pequeña espera para que se procesen cambios y luego notificar turno actualizado
                     time.sleep(0.1)
-                    self.notificar_turno()
-            
-            cliente_socket.close()
-            
+                    try:
+                        self.notificar_turno()
+                    except Exception:
+                        logger.exception("Error notificando turno tras desconexión")
+            except Exception:
+                logger.exception("Error al manejar desconexión durante partida")
+
+            # Cerrar socket (si aún no se cerró)
+            try:
+                cliente_socket.close()
+            except Exception:
+                # Ya cerrado o inválido, no es crítico
+                pass
+
         except Exception as e:
             logger.error(f"Error limpiando cliente: {e}")
-    
+
     def procesar_mensaje(self, cliente_socket, mensaje):
-        
         try:
             tipo = mensaje.get("tipo")
             cliente_info = cliente_socket.getpeername()
             logger.debug(f"Procesando {tipo} de {cliente_info}")
-            
+
+            # ------------------ Inicio de partida manual por admin ------------------
+            if tipo == proto.MSG_LISTO:
+                logger.info(f"MSG_LISTO recibido de {cliente_info}")
+
+                # Verificar que el remitente sea el admin
+                admin_sock = getattr(self.game_manager, "admin_cliente", None)
+                if cliente_socket != admin_sock:
+                    logger.warning(f"Intento de iniciar partida por no-admin: {cliente_info}")
+                    self.enviar(cliente_socket, proto.mensaje_error("Sólo el administrador puede iniciar la partida"))
+                    return
+
+                # Verificar mínimo de jugadores
+                if len(self.game_manager.jugadores) < proto.MIN_JUGADORES:
+                    self.enviar(cliente_socket, proto.mensaje_error(
+                        f"No hay suficientes jugadores (mínimo {proto.MIN_JUGADORES})"
+                    ))
+                    return
+
+                # Verificar que no esté ya iniciado
+                if getattr(self.game_manager, "juego_iniciado", False):
+                    self.enviar(cliente_socket, proto.mensaje_info("El juego ya está iniciado"))
+                    return
+
+                # Iniciar el juego
+                logger.info("Administrador autorizado. Iniciando el juego...")
+                self.iniciar_juego()
+                return
+
+            # ------------------ Resto de acciones del juego ------------------
             if tipo == proto.MSG_LANZAR_DADOS:
                 logger.info(f"LANZAR_DADOS recibido de {cliente_info}")
                 self.procesar_lanzar_dados(cliente_socket)
-            
+
             elif tipo == proto.MSG_SACAR_CARCEL:
                 logger.info(f"SACAR_CARCEL recibido de {cliente_info}")
                 self.procesar_sacar_carcel(cliente_socket)
-            
+
             elif tipo == proto.MSG_MOVER_FICHA:
                 ficha_id = mensaje.get("ficha_id", 0)
                 logger.info(f"MOVER_FICHA recibido de {cliente_info}, ficha: {ficha_id}")
                 self.procesar_mover_ficha(cliente_socket, ficha_id)
-            
+
             else:
                 logger.warning(f"Mensaje no reconocido de {cliente_info}: {tipo}")
                 self.enviar(cliente_socket, proto.mensaje_error("Mensaje no reconocido"))
-                
+
         except Exception as e:
             logger.error(f"Error procesando mensaje: {e}")
-            self.enviar(cliente_socket, proto.mensaje_error("Error interno del servidor"))
+            try:
+                self.enviar(cliente_socket, proto.mensaje_error("Error interno del servidor"))
+            except Exception:
+                logger.exception("Fallo al enviar mensaje de error al cliente")
+
 
     def procesar_lanzar_dados(self, cliente_socket):
         
@@ -480,7 +615,7 @@ class ParchisServer:
             if cliente_socket in self.clientes_activos:
                 data = json.dumps(mensaje, ensure_ascii=False).encode('utf-8')
                 logger.debug(f"Enviando a {cliente_socket.getpeername()}: {mensaje}")
-                cliente_socket.send(data)
+                cliente_socket.sendall(data)
                 logger.debug(f"Mensaje enviado exitosamente")
             else:
                 logger.warning(f"Intento de enviar a cliente inactivo")

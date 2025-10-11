@@ -39,6 +39,9 @@ def crear_mensaje(tipo, **kwargs):
     mensaje.update(kwargs)
     return mensaje
 
+def mensaje_listo():
+    return crear_mensaje(MSG_LISTO)
+
 def mensaje_conectar(nombre):
     return crear_mensaje(MSG_CONECTAR, nombre=nombre)
 
@@ -69,5 +72,9 @@ def mensaje_error(mensaje):
 def mensaje_victoria(ganador, color):
     return crear_mensaje(MSG_VICTORIA, ganador=ganador, color=color)
 
-def mensaje_info(mensaje):
-    return crear_mensaje(MSG_INFO, mensaje=mensaje)
+def mensaje_info(mensaje, es_admin=None):
+    msg = crear_mensaje(MSG_INFO, mensaje=mensaje)
+    if es_admin is not None:
+        msg["es_admin"] = bool(es_admin)
+    return msg
+

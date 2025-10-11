@@ -53,6 +53,9 @@ def crear_mensaje(tipo, **kwargs):
     mensaje.update(kwargs)
     return mensaje
 
+def mensaje_listo():
+    return crear_mensaje(MSG_LISTO)
+
 def mensaje_conectar(nombre):
     return crear_mensaje(MSG_CONECTAR, nombre=nombre)
 
