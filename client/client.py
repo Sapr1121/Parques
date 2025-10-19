@@ -42,6 +42,7 @@ class ParchisClient:
         self.ultima_suma = 0
         self.ultimo_es_doble = False
         self.dobles_consecutivos = 0
+        self.dados_usados = []  # Nueva propiedad para rastrear dados usados
         
         # Cola de mensajes para el hilo principal
         self.cola_mensajes = queue.Queue()
@@ -155,6 +156,7 @@ class ParchisClient:
         self.ultimo_es_doble = False
         self.esperando_dados = False
         self.esperando_movimiento = False
+        self.dados_usados = []  # Reiniciar dados usados
         self.log_debug("🔄 Estado de dados reseteado para nuevo turno")
     
     def manejar_mensaje(self, mensaje):
@@ -198,22 +200,17 @@ class ParchisClient:
 
             # ⭐ CLAVE: Resetear estado cuando ES mi turno (nuevo o mantenido)
             if self.es_mi_turno:
-                # Si no era mi turno antes, o si era mi turno pero cambió algo, resetear
+                # Si no era mi turno antes, resetear todo
                 if not era_mi_turno_anterior:
                     self.log_debug("🔄 Nuevo turno - reseteando estado de dados")
                     self.resetear_estado_dados()
-                # Si ya era mi turno, verificar si debo resetear por mantener turno
+                # Si ya era mi turno, es porque sacó dobles - resetear solo lo necesario
                 else:
-                    # Solo resetear dados_lanzados si mantuvo turno por dobles
-                    if self.ultimo_es_doble:
-                        self.dados_lanzados = False
-                        self.esperando_dados = False
-                        self.esperando_movimiento = False
-                        self.log_debug("🔄 Manteniendo turno por dobles - reseteando solo datos_lanzados")
-                    else:
-                        # Si no era doble y sigue siendo mi turno, algo raro pasó - resetear todo
-                        self.resetear_estado_dados()
-                        self.log_debug("🔄 Turno mantenido sin dobles - reseteando todo")
+                    self.dados_lanzados = False
+                    self.esperando_dados = False
+                    self.esperando_movimiento = False
+                    self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados
+                    self.log_debug("🔄 Manteniendo turno por dobles - reseteando estado")
             else:
                 # No es mi turno - resetear flags de espera
                 self.esperando_dados = False
@@ -233,24 +230,39 @@ class ParchisClient:
             self.ultimo_es_doble = mensaje["es_doble"]
             self.dados_lanzados = True
             self.esperando_dados = False
+            self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados con cada nuevo tiro
 
             # ⭐ Solo mostrar resultado si son MIS dados
             if self.es_mi_turno:
                 dobles_msg = "¡DOBLES! 🎉" if self.ultimo_es_doble else ""
                 print(f"\n🎲 RESULTADO: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma} {dobles_msg}")
 
+                # Verificar si todas las fichas están en la cárcel y sacó dobles
                 if self.ultimo_es_doble:
-                    print("🔄 ¡Sacaste dobles! Puedes sacar una ficha de la cárcel y mantener tu turno.")
+                    todas_en_carcel = True
+                    for jugador in self.jugadores:
+                        if jugador["color"] == self.mi_color:
+                            todas_en_carcel = all(f["estado"] == "BLOQUEADO" for f in jugador["fichas"])
+                            break
+                    
+                    if todas_en_carcel:
+                        print("\n🔓 ¡Sacaste dobles! Liberando todas las fichas de la cárcel...")
+                        self.enviar(proto.mensaje_sacar_todas())
+                        return
+                    else:
+                        print("🔄 ¡Sacaste dobles! Puedes sacar una ficha de la cárcel y mantener tu turno.")
                 else:
                     print("➡️ Sin dobles. Mueve una ficha y tu turno terminará.")
 
         elif tipo == proto.MSG_TABLERO:
-            # El servidor envía la estructura completa del tablero; la guardamos tal cual
             self.estado_tablero = mensaje
-            # También actualizamos la lista local de jugadores si viene incluida
             if "jugadores" in mensaje:
                 self.jugadores = mensaje["jugadores"]
-            self.log_debug("Estado del tablero actualizado")
+                # Actualizar información de fichas en camino a meta
+                for jugador in mensaje["jugadores"]:
+                    if jugador["color"] == self.mi_color:
+                        fichas_meta = [f for f in jugador["fichas"] if f["estado"] == "CAMINO_META"]
+                        self.fichas_en_meta = len(fichas_meta)
 
         elif tipo == proto.MSG_MOVIMIENTO_OK:
             nombre = mensaje["nombre"]
@@ -264,6 +276,17 @@ class ParchisClient:
             else:
                 desde_str = "CÁRCEL" if desde == -1 else f"C{desde + 1}"
                 print(f"✅ {nombre} ({color}) movió ficha de {desde_str} → C{hasta + 1}")
+
+            # Marcar el movimiento como exitoso si es nuestro turno
+            if self.es_mi_turno:
+                self.ultimo_movimiento_exitoso = True
+
+            # Si sacamos dobles y es nuestro turno, permitir nueva tirada
+            if self.ultimo_es_doble and self.es_mi_turno:
+                self.dados_lanzados = False
+                self.esperando_dados = False
+                # No reiniciamos dados_usados aquí, se hará cuando se lancen los nuevos dados
+                print("\n🎲 ¡Sacaste dobles! Puedes volver a lanzar los dados.")
 
             self.esperando_movimiento = False
 
@@ -352,9 +375,13 @@ class ParchisClient:
         return True
     
     def esperar_respuesta_movimiento(self, timeout=3.0):
-        """Espera respuesta de movimiento"""
+        """
+        Espera respuesta de movimiento
+        Retorna: True si el movimiento fue exitoso, False si hubo error o timeout
+        """
         tiempo_inicio = time.time()
         self.esperando_movimiento = True
+        self.ultimo_movimiento_exitoso = False  # Nueva variable para rastrear éxito
         
         while self.esperando_movimiento and (time.time() - tiempo_inicio) < timeout:
             self.procesar_mensajes()
@@ -365,7 +392,7 @@ class ParchisClient:
             self.esperando_movimiento = False
             return False
         
-        return True
+        return self.ultimo_movimiento_exitoso  # Retornar si el movimiento fue exitoso
     
     def mostrar_estado_dados(self):
         """⭐ CORREGIDO: Muestra el estado actual de los dados SOLO si son míos"""
@@ -398,6 +425,7 @@ class ParchisClient:
         
         fichas_bloqueadas = []
         fichas_en_juego = []
+        fichas_en_camino_meta = []
         fichas_en_meta = []
         
         for ficha in mi_info["fichas"]:
@@ -405,9 +433,11 @@ class ParchisClient:
                 fichas_bloqueadas.append(ficha)
             elif ficha["estado"] == "EN_JUEGO":
                 fichas_en_juego.append(ficha)
+            elif ficha["estado"] == "CAMINO_META":
+                fichas_en_camino_meta.append(ficha)
             elif ficha["estado"] == "META":
                 fichas_en_meta.append(ficha)
-        
+    
         # Mostrar fichas por categoría
         print("🔒 FICHAS EN CÁRCEL:")
         if fichas_bloqueadas:
@@ -419,10 +449,22 @@ class ParchisClient:
         print("\n🎮 FICHAS EN JUEGO:")
         if fichas_en_juego:
             for ficha in fichas_en_juego:
-                # Calcular posición después del movimiento si se movieran
                 futura_pos = ficha['posicion'] + self.ultima_suma if self.dados_lanzados and self.es_mi_turno else "?"
-                movimiento_info = f" → C{futura_pos + 1}" if self.dados_lanzados and self.es_mi_turno and isinstance(futura_pos, int) else ""
+                movimiento_info = ""
+                if self.dados_lanzados and self.es_mi_turno:
+                    if isinstance(futura_pos, int):
+                        if futura_pos >= 68:
+                            futura_pos = futura_pos - 68
+                        movimiento_info = f" → C{futura_pos + 1}"
                 print(f"  └─ Ficha {ficha['id'] + 1}: C{ficha['posicion'] + 1}{movimiento_info}")
+        else:
+            print("  └─ Ninguna")
+            
+        print("\n🎯 FICHAS EN CAMINO A META:")
+        if fichas_en_camino_meta:
+            for ficha in fichas_en_camino_meta:
+                casilla_actual = f"s{self.mi_color[0]}{ficha['posicion_meta'] + 1}"
+                print(f"  └─ Ficha {ficha['id'] + 1}: {casilla_actual}")
         else:
             print("  └─ Ninguna")
         
@@ -570,7 +612,7 @@ class ParchisClient:
         
         opciones = []
         
-        # ⭐ CLAVE: Si no he lanzado dados EN ESTE TURNO, mostrar opción de lanzar
+        # Si no hemos lanzado dados
         if not self.dados_lanzados:
             opciones = [
                 "🎲 Lanzar dados",
@@ -580,24 +622,40 @@ class ParchisClient:
                 "🚪 Salir"
             ]
         else:
-            # Ya se lanzaron los dados EN ESTE TURNO
-            if self.ultimo_es_doble:
+            # Verificar si todas las fichas están en la cárcel
+            todas_en_carcel = True
+            fichas_en_juego = 0
+            for jugador in self.jugadores:
+                if jugador["color"] == self.mi_color:
+                    todas_en_carcel = all(f["estado"] == "BLOQUEADO" for f in jugador["fichas"])
+                    fichas_en_juego = sum(1 for f in jugador["fichas"] 
+                                        if f["estado"] in ["EN_JUEGO", "CAMINO_META"])
+                    break
+            
+            if self.ultimo_es_doble and todas_en_carcel:
+                # Si sacó dobles y todas están en cárcel, liberar automáticamente
+                print("\n🔓 Liberando todas las fichas automáticamente...")
+                self.enviar(proto.mensaje_sacar_todas())
+                return "0", []
+            elif self.ultimo_es_doble:
                 opciones = [
-                    "🔓 Sacar ficha de la cárcel",
-                    "🎮 Mover ficha en juego",
+                    "🔓 Sacar ficha de la cárcel" if not todas_en_carcel else None,
+                    "🎮 Mover ficha en juego" if fichas_en_juego > 0 else None,
                     "👀 Ver mis fichas",
-                    "📊 Ver tablero completo", 
+                    "📊 Ver tablero completo",
                     "🎯 Ver tablero visual",
                     "🚪 Salir"
                 ]
+                opciones = [opt for opt in opciones if opt is not None]
             else:
                 opciones = [
-                    "🎮 Mover ficha en juego",
+                    "🎮 Mover ficha en juego" if fichas_en_juego > 0 else None,
                     "👀 Ver mis fichas",
                     "📊 Ver tablero completo",
-                    "🎯 Ver tablero visual", 
+                    "🎯 Ver tablero visual",
                     "🚪 Salir"
                 ]
+                opciones = [opt for opt in opciones if opt is not None]
         
         print("\n¿Qué deseas hacer?")
         for i, opcion in enumerate(opciones, 1):
@@ -788,13 +846,65 @@ class ParchisClient:
         self.mostrar_mis_fichas()
         
         try:
+            # Primero elegir la ficha
             ficha_num = int(input(f"\n¿Qué ficha deseas mover? (1-{proto.FICHAS_POR_JUGADOR}): "))
-            if 1 <= ficha_num <= proto.FICHAS_POR_JUGADOR:
-                print(f"\n🎮 Moviendo ficha {ficha_num}...")
-                self.enviar(proto.mensaje_mover_ficha(ficha_num - 1))
-                self.esperar_respuesta_movimiento()
-            else:
+            if not (1 <= ficha_num <= proto.FICHAS_POR_JUGADOR):
                 print(f"⚠️ Número de ficha inválido (debe ser 1-{proto.FICHAS_POR_JUGADOR})")
+                return
+                
+            dado_elegido = 3  # Por defecto usar suma
+            
+            # Si ya tenemos un dado usado, usar automáticamente el otro sin preguntar
+            if len(self.dados_usados) == 1:
+                # Usar el dado que no se ha usado
+                dado_elegido = 2 if self.dados_usados[0] == 1 else 1
+                valor_dado = self.ultimo_dado2 if self.dados_usados[0] == 1 else self.ultimo_dado1
+                print(f"\n🎲 Usando el dado restante ({valor_dado})")
+                
+                # Enviar el movimiento inmediatamente
+                print(f"\n🎮 Moviendo ficha {ficha_num}...")
+                self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
+                movimiento_exitoso = self.esperar_respuesta_movimiento()
+                
+                if not self.es_mi_turno:  # Si perdimos el turno
+                    return
+                
+                if movimiento_exitoso:
+                    self.dados_usados.append(dado_elegido)
+                
+                return  # No necesitamos hacer nada más, este es el segundo movimiento
+            
+            # Primer movimiento - mostrar opciones de dados
+            print(f"\nDados disponibles: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}")
+            print(f"1. Usar primer dado ({self.ultimo_dado1})")
+            print(f"2. Usar segundo dado ({self.ultimo_dado2})")
+            print(f"3. Usar suma de dados ({self.ultima_suma})")
+            
+            try:
+                opcion = int(input("Elige una opción (1-3): "))
+                if opcion not in [1, 2, 3]:
+                    print("⚠️ Opción inválida")
+                    return
+                dado_elegido = opcion
+            except ValueError:
+                print("⚠️ Entrada inválida")
+                return
+            
+            # Enviar primer movimiento
+            print(f"\n🎮 Moviendo ficha {ficha_num}...")
+            self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
+            movimiento_exitoso = self.esperar_respuesta_movimiento()
+            
+            # Si perdimos el turno o hubo error
+            if not self.es_mi_turno:
+                return
+            
+            # Si el movimiento fue exitoso y usamos un dado individual (no la suma)
+            if movimiento_exitoso and dado_elegido in [1, 2]:
+                self.dados_usados.append(dado_elegido)
+                print("\n🎲 Moviendo otra ficha con el dado restante...")
+                self.elegir_y_mover_ficha()
+            
         except ValueError:
             print("⚠️ Ingresa un número válido")
     

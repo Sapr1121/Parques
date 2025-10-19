@@ -350,8 +350,41 @@ class ParchisServer:
 
             elif tipo == proto.MSG_MOVER_FICHA:
                 ficha_id = mensaje.get("ficha_id", 0)
-                logger.info(f"MOVER_FICHA recibido de {cliente_info}, ficha: {ficha_id}")
-                self.procesar_mover_ficha(cliente_socket, ficha_id)
+                dado_elegido = mensaje.get("dado_elegido", 0)  # 1: primer dado, 2: segundo dado, 3: suma
+                logger.info(f"MOVER_FICHA recibido de {cliente_info}, ficha: {ficha_id}, dado: {dado_elegido}")
+                self.procesar_mover_ficha(cliente_socket, ficha_id, dado_elegido)
+
+            elif mensaje.get("tipo") == proto.MSG_SACAR_TODAS:
+                if not self.game_manager.es_turno_de(cliente_socket):
+                    self.enviar(cliente_socket, proto.mensaje_error("No es tu turno"))
+                    return
+
+                exito, resultado = self.game_manager.sacar_todas_fichas_carcel(cliente_socket)
+                if exito:
+                    # Notificar a todos del movimiento
+                    color = self.game_manager.clientes[cliente_socket]["color"]
+                    nombre = self.game_manager.clientes[cliente_socket]["nombre"]
+                    
+                    for ficha_id in resultado["fichas_liberadas"]:
+                        self.broadcast(proto.mensaje_movimiento_ok(
+                            nombre=nombre,
+                            color=color,
+                            ficha_id=ficha_id,
+                            desde=-1,
+                            hasta=resultado["posicion"],
+                            accion="liberar_ficha"
+                        ))
+                    
+                    # Enviar estado actualizado del tablero
+                    self.broadcast(proto.mensaje_tablero(self.game_manager.obtener_estado_tablero()))
+                    
+                    # Verificar si debe avanzar turno
+                    if self.game_manager.debe_avanzar_turno_ahora():
+                        self.game_manager.avanzar_turno()
+                        self.notificar_turno()
+                else:
+                    self.enviar(cliente_socket, proto.mensaje_error(resultado))
+                    return
 
             else:
                 logger.warning(f"Mensaje no reconocido de {cliente_info}: {tipo}")
@@ -504,9 +537,12 @@ class ParchisServer:
                 time.sleep(0.1)
                 self.broadcast(proto.mensaje_turno(info["nombre"], info["color"]))
     
-    def procesar_mover_ficha(self, cliente_socket, ficha_id):
+    def procesar_mover_ficha(self, cliente_socket, ficha_id, dado_elegido):
+        """Procesa el movimiento de una ficha con el dado elegido
+        dado_elegido: 1 = primer dado, 2 = segundo dado, 3 = suma de dados"""
+        logger.debug(f"Procesando movimiento de ficha {ficha_id} con dado {dado_elegido}")
         
-        exito, resultado = self.game_manager.mover_ficha(cliente_socket, ficha_id)
+        exito, resultado = self.game_manager.mover_ficha(cliente_socket, ficha_id, dado_elegido)
         
         if not exito:
             logger.warning(f"Error moviendo ficha: {resultado}")

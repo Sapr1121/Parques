@@ -7,6 +7,7 @@ MSG_SACAR_CARCEL = "SACAR_CARCEL"
 MSG_MOVER_FICHA = "MOVER_FICHA"
 MSG_DESCONECTAR = "DESCONECTAR"
 MSG_LISTO = "LISTO"  # Cliente listo para empezar
+MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel    
 
 # ============================================
 # TIPOS DE MENSAJES: SERVIDOR → CLIENTE
@@ -65,8 +66,12 @@ def mensaje_lanzar_dados():
 def mensaje_sacar_carcel():
     return crear_mensaje(MSG_SACAR_CARCEL)
 
-def mensaje_mover_ficha(ficha_id):
-    return crear_mensaje(MSG_MOVER_FICHA, ficha_id=ficha_id)
+def mensaje_mover_ficha(ficha_id, dado_elegido):
+    """
+    Crea un mensaje para mover una ficha.
+    dado_elegido: 1 = primer dado, 2 = segundo dado, 3 = suma de dados
+    """
+    return crear_mensaje(MSG_MOVER_FICHA, ficha_id=ficha_id, dado_elegido=dado_elegido)
 
 def mensaje_bienvenida(color, jugador_id, nombre):
     return crear_mensaje(MSG_BIENVENIDA, color=color, jugador_id=jugador_id, nombre=nombre)
@@ -88,3 +93,6 @@ def mensaje_victoria(ganador, color):
 
 def mensaje_info(mensaje):
     return crear_mensaje(MSG_INFO, mensaje=mensaje)
+
+def mensaje_sacar_todas():
+    return crear_mensaje(MSG_SACAR_TODAS)

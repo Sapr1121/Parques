@@ -213,6 +213,7 @@ class GameManager:
         self.dobles_consecutivos = 0
         self.accion_realizada = False
         self.debe_avanzar_turno = False
+        self.dados_usados = []  # ⭐ NUEVO: Resetear dados usados
         logger.debug("🔄 Estado de turno reseteado")
     
     def obtener_jugador_actual(self):
@@ -252,18 +253,29 @@ class GameManager:
             
             jugador = self.clientes[socket_cliente]["jugador"]
             
-            # Si salió doble, siempre puede sacar de cárcel
+            # Si salió doble, revisar fichas en cárcel
             if self.ultimo_es_doble:
                 fichas_bloqueadas = [f for f in jugador.fichas if f.estado == proto.ESTADO_BLOQUEADO]
                 if fichas_bloqueadas:
                     return True
             
-            # Si tiene fichas en juego, puede moverlas
-            fichas_en_juego = [f for f in jugador.fichas if f.estado == proto.ESTADO_EN_JUEGO]
-            if fichas_en_juego:
-                return True
+            # Revisar fichas en juego y en camino a meta
+            fichas_movibles = [f for f in jugador.fichas 
+                              if f.estado in ["EN_JUEGO", "CAMINO_META"]]
             
-            # No puede hacer nada
+            if not fichas_movibles:
+                return False
+                
+            # Verificar si alguna ficha puede moverse
+            for ficha in fichas_movibles:
+                if ficha.estado == "CAMINO_META":
+                    # Verificar si puede moverse con algún dado individual
+                    pasos_restantes = 7 - ficha.posicion_meta
+                    if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
+                        return True
+                else:  # EN_JUEGO
+                    return True  # Siempre puede moverse en el tablero principal
+            
             return False
     
     def lanzar_dados(self):
@@ -276,6 +288,7 @@ class GameManager:
         self.ultimo_es_doble = self.ultimo_dado1 == self.ultimo_dado2
         self.dados_lanzados = True
         self.accion_realizada = False
+        self.dados_usados = []  # ⭐ NUEVO: Reiniciar dados usados con cada tiro
         
         if self.ultimo_es_doble:
             self.dobles_consecutivos += 1
@@ -283,7 +296,7 @@ class GameManager:
             logger.debug(f"¡DOBLES! ({self.dobles_consecutivos}/{self.max_dobles}) - Mantiene turno")
         else:
             self.dobles_consecutivos = 0
-            self.debe_avanzar_turno = True
+            # Ya no establecemos debe_avanzar_turno aquí, lo manejará el método mover_ficha
             logger.debug("Sin dobles - Verificar si puede hacer acciones")
         
         logger.info(f"🎲 Dados: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}")
@@ -332,15 +345,12 @@ class GameManager:
             jugador = self.clientes[socket_cliente]["jugador"]
             color = self.clientes[socket_cliente]["color"]
             
-            # Buscar fichas bloqueadas
             fichas_bloqueadas = [f for f in jugador.fichas if f.estado == proto.ESTADO_BLOQUEADO]
-            
             if not fichas_bloqueadas:
                 return False, "No tienes fichas en la cárcel"
             
-            # Liberar TODAS las fichas bloqueadas
-            indice_color = proto.COLORES.index(color)
-            salida = self.tablero.salidas[indice_color]
+            # Usar el nuevo sistema de salidas
+            salida = self.tablero.salidas[color]  # Ahora es un diccionario
             fichas_liberadas = []
             
             for ficha in fichas_bloqueadas:
@@ -384,8 +394,8 @@ class GameManager:
             
             # Sacar la primera ficha bloqueada
             ficha = fichas_bloqueadas[0]
-            indice_color = proto.COLORES.index(color)
-            salida = self.tablero.salidas[indice_color]
+            # Usar el nuevo sistema de salidas
+            salida = self.tablero.salidas[color]  # Ahora es un diccionario
             
             # Cambiar estado y posición
             ficha.estado = proto.ESTADO_EN_JUEGO
@@ -399,53 +409,106 @@ class GameManager:
             
             return True, {"ficha_id": ficha_id, "posicion": salida}
     
-    def mover_ficha(self, socket_cliente, ficha_id):
-        """Mueve una ficha específica"""
+    def mover_ficha(self, socket_cliente, ficha_id, dado_elegido):
+        """
+        Mueve una ficha usando el dado elegido.
+        dado_elegido: 1 = primer dado, 2 = segundo dado, 3 = suma de dados
+        """
         with self.lock:
-            logger.debug(f"🔒 Moviendo ficha {ficha_id}")
+            logger.debug(f"Procesando movimiento de ficha {ficha_id} con dado {dado_elegido}")
             
-            if socket_cliente not in self.clientes:
-                return False, "Cliente no válido"
-            
-            jugador_actual = self.obtener_jugador_actual()
-            if not jugador_actual or self.clientes[socket_cliente]["jugador"] != jugador_actual:
+            # Validaciones básicas
+            if not self.es_turno_de(socket_cliente):
                 return False, "No es tu turno"
-            
+
             if not self.dados_lanzados:
                 return False, "Debes lanzar los dados primero"
-            
+
             jugador = self.clientes[socket_cliente]["jugador"]
             
             if ficha_id < 0 or ficha_id >= len(jugador.fichas):
                 return False, "Ficha inválida"
-            
+
             ficha = jugador.fichas[ficha_id]
             
-            if ficha.estado != proto.ESTADO_EN_JUEGO:
-                return False, "Esa ficha no está en juego"
+            # ⭐ NUEVO: Inicializar lista de dados usados si no existe
+            if not hasattr(self, 'dados_usados'):
+                self.dados_usados = []
             
-            posicion_anterior = ficha.posicion
-            
-            # Intentar mover la ficha
-            try:
-                exito = ficha.mover(self.ultima_suma, self.tablero)
+            # Validar que el dado no haya sido usado ya
+            if dado_elegido in [1, 2] and dado_elegido in self.dados_usados:
+                return False, f"El dado {dado_elegido} ya fue usado"
                 
-                if exito:
-                    logger.info(f"🎮 Ficha {ficha_id} movida de {posicion_anterior} a {ficha.posicion}")
+            # ⭐ NUEVO: Establecer flag para avanzar turno si:
+            # 1. Se usa la suma de dados (dado_elegido = 3)
+            # 2. Ya se usó un dado y estamos usando el otro (solo si no es dobles)
+            if dado_elegido == 3:
+                self.debe_avanzar_turno = True
+            elif dado_elegido in [1, 2] and not self.ultimo_es_doble:  # Solo si no es dobles
+                if len(self.dados_usados) == 1 and dado_elegido not in self.dados_usados:
+                    self.debe_avanzar_turno = True
+            
+            # Validar que la ficha no esté en cárcel o meta
+            if ficha.estado == "BLOQUEADO":
+                return False, "Esta ficha está en la cárcel"
+            if ficha.estado == "META":
+                return False, "Esta ficha ya está en meta"
+
+            # Determinar el valor del movimiento según el dado elegido
+            if dado_elegido == 1:
+                valor_movimiento = self.ultimo_dado1
+                logger.debug(f"Usando primer dado: {valor_movimiento}")
+            elif dado_elegido == 2:
+                valor_movimiento = self.ultimo_dado2
+                logger.debug(f"Usando segundo dado: {valor_movimiento}")
+            elif dado_elegido == 3:
+                valor_movimiento = self.ultima_suma
+                logger.debug(f"Usando suma de dados: {valor_movimiento}")
+            else:
+                logger.warning(f"Dado elegido inválido: {dado_elegido}")
+                return False, "Opción de dado inválida"
+
+            # Contar fichas en juego y validar reglas especiales
+            fichas_en_juego = sum(1 for f in jugador.fichas if f.estado in ["EN_JUEGO", "CAMINO_META"])
+            
+            # Validaciones según el estado de la ficha
+            if ficha.estado == "CAMINO_META":
+                if dado_elegido == 3:
+                    return False, "No puedes usar la suma de dados en el camino a meta"
                     
-                    # Marcar acción realizada
-                    self.accion_realizada = True
-                    
-                    return True, {
-                        "desde": posicion_anterior, 
-                        "hasta": ficha.posicion,
-                        "ficha_id": ficha_id
-                    }
-                else:
-                    return False, "No se pudo mover la ficha a esa posición"
-            except Exception as e:
-                logger.error(f"Error moviendo ficha: {e}")
-                return False, "Error al mover la ficha"
+                # Validar que no exceda el límite de la meta
+                pasos_restantes = 7 - ficha.posicion_meta
+                if valor_movimiento > pasos_restantes:
+                    return False, "El movimiento excede la meta"
+                
+            elif fichas_en_juego == 1 and not self.tablero.esta_cerca_meta(ficha):
+                # Con una sola ficha lejos de meta, debe usar la suma
+                if dado_elegido != 3:
+                    return False, "Debes usar la suma de dados cuando tienes una sola ficha lejos de meta"
+
+            # Intentar realizar el movimiento
+            posicion_anterior = ficha.posicion
+            logger.debug(f"Intentando mover ficha desde {posicion_anterior} con valor {valor_movimiento}")
+            
+            if ficha.mover(valor_movimiento, self.tablero):
+                self.accion_realizada = True
+                logger.info(f"Ficha {ficha_id} movida de {posicion_anterior} a {ficha.posicion}")
+                
+                # ⭐ NUEVO: Registrar dado usado si es individual
+                if dado_elegido in [1, 2]:
+                    self.dados_usados.append(dado_elegido)
+                    logger.debug(f"Dado {dado_elegido} registrado como usado. Dados usados: {self.dados_usados}")
+                
+                # Verificar victoria si llegó a meta
+                if ficha.estado == "META":
+                    self.verificar_victoria(socket_cliente)
+                
+                return True, {
+                    "desde": posicion_anterior,
+                    "hasta": ficha.posicion
+                }
+            
+            return False, "Movimiento inválido"
     
     def debe_avanzar_turno_ahora(self):
         """Determina si debe avanzar el turno después de una acción"""
@@ -459,12 +522,20 @@ class GameManager:
                 logger.debug("🔄 Dobles: mantiene turno")
                 return False
             
-            # Si no salió doble o excedió límite de dobles, SÍ avanzar
-            logger.debug("➡️ Debe avanzar turno")
-            return True
+            # Si se usó la suma de dados, avanzar turno
+            if self.debe_avanzar_turno:
+                logger.debug("➡️ Debe avanzar turno: se usó la suma")
+                return True
+                
+            # Si se usaron ambos dados individuales, avanzar turno
+            if hasattr(self, 'dados_usados') and len(self.dados_usados) == 2:
+                logger.debug("➡️ Debe avanzar turno: se usaron ambos dados")
+                return True
+                
+            return False
     
     def avanzar_turno(self):
-        """Avanza al siguiente turno con lógica corregida"""
+        """Avanzar al siguiente turno con lógica corregida"""
         with self.lock:
             logger.debug("🔒 Avanzando turno")
             
@@ -474,9 +545,11 @@ class GameManager:
             # Si salió doble y no excede el límite, mantener turno
             if self.ultimo_es_doble and self.dobles_consecutivos < self.max_dobles:
                 logger.info(f"🔄 Doble! El jugador mantiene su turno (dobles: {self.dobles_consecutivos})")
-                # SOLO resetear dados_lanzados, mantener dobles_consecutivos
+                # Resetear banderas de control pero mantener dobles_consecutivos
                 self.dados_lanzados = False
                 self.accion_realizada = False
+                self.debe_avanzar_turno = False
+                self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados
                 return False  # NO avanzó turno
             
             # Avanzar al siguiente jugador
@@ -571,3 +644,7 @@ class GameManager:
                 }
                 for info in self.clientes.values()
             ]
+    
+    def esta_cerca_de_meta(self, ficha):
+        """Verifica si una ficha está cerca de su meta"""
+        return self.tablero.esta_cerca_meta(ficha)

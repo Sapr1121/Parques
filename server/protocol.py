@@ -21,6 +21,7 @@ MSG_VICTORIA = "VICTORIA"
 MSG_JUGADOR_DESCONECTADO = "JUGADOR_DESCONECTADO"
 MSG_CAPTURA = "CAPTURA"
 MSG_INFO = "INFO"  # Mensajes informativos generales
+MSG_SACAR_TODAS = "SACAR_TODAS"
 
 MAX_JUGADORES = 4
 MIN_JUGADORES = 2
@@ -51,8 +52,12 @@ def mensaje_lanzar_dados():
 def mensaje_sacar_carcel():
     return crear_mensaje(MSG_SACAR_CARCEL)
 
-def mensaje_mover_ficha(ficha_id):
-    return crear_mensaje(MSG_MOVER_FICHA, ficha_id=ficha_id)
+def mensaje_mover_ficha(ficha_id, dado_elegido):
+    """
+    Crea un mensaje para mover una ficha.
+    dado_elegido: 1 = primer dado, 2 = segundo dado, 3 = suma de dados
+    """
+    return crear_mensaje(MSG_MOVER_FICHA, ficha_id=ficha_id, dado_elegido=dado_elegido)
 
 def mensaje_bienvenida(color, jugador_id, nombre):
     return crear_mensaje(MSG_BIENVENIDA, color=color, jugador_id=jugador_id, nombre=nombre)
@@ -77,4 +82,7 @@ def mensaje_info(mensaje, es_admin=None):
     if es_admin is not None:
         msg["es_admin"] = bool(es_admin)
     return msg
+
+def mensaje_sacar_todas():
+    return crear_mensaje(MSG_SACAR_TODAS)
 
