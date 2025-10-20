@@ -38,7 +38,7 @@ class GameManager:
         self.accion_realizada = False
         self.debe_avanzar_turno = False
     
-    def agregar_jugador(self, socket_cliente, nombre):
+    def agregar_jugador(self, websocket, nombre):
         """
         Agrega un jugador al juego.
         Retorna: (color, error, es_admin)
@@ -76,7 +76,7 @@ class GameManager:
 
             # Añadir a lista de jugadores y mapping de clientes
             self.jugadores.append(usuario)
-            self.clientes[socket_cliente] = {
+            self.clientes[websocket] = {
                 "jugador": usuario,
                 "nombre": nombre,
                 "color": color,
@@ -86,7 +86,7 @@ class GameManager:
             # Gestionar admin
             es_admin = False
             if not self.admin_cliente:
-                self.admin_cliente = socket_cliente
+                self.admin_cliente = websocket
                 self.admin_id = jugador_id
                 usuario.es_admin = True
                 es_admin = True
@@ -95,7 +95,15 @@ class GameManager:
                 usuario.es_admin = False
 
             logger.info(f"✅ Jugador {nombre} agregado como {color} (ID: {jugador_id}, Admin: {es_admin})")
-            return color, None, es_admin
+            if len(self.jugadores) == 1:
+                self.host_cliente = websocket
+                self.host_info = {"nombre": nombre, "color": color, "socket": websocket}
+                es_host = True
+                logger.info(f"🏠 {nombre} es ahora el HOST del juego")
+            else:
+                es_host = False
+            return color, None, es_admin, es_host
+            
     
     def eliminar_jugador(self, socket_cliente):
         """

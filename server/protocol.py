@@ -1,14 +1,17 @@
+# ============================================
+# TIPOS DE MENSAJES: CLIENTE → SERVIDOR
+# ============================================
 MSG_CONECTAR = "CONECTAR"
 MSG_LANZAR_DADOS = "LANZAR_DADOS"
 MSG_SACAR_CARCEL = "SACAR_CARCEL"
 MSG_MOVER_FICHA = "MOVER_FICHA"
 MSG_DESCONECTAR = "DESCONECTAR"
-MSG_LISTO = "LISTO" 
+MSG_LISTO = "LISTO"  # Cliente listo para empezar
+MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel    
 
-
-
-
-
+# ============================================
+# TIPOS DE MENSAJES: SERVIDOR → CLIENTE
+# ============================================
 MSG_BIENVENIDA = "BIENVENIDA"
 MSG_ESPERANDO = "ESPERANDO"
 MSG_INICIO_JUEGO = "INICIO_JUEGO"
@@ -21,18 +24,29 @@ MSG_VICTORIA = "VICTORIA"
 MSG_JUGADOR_DESCONECTADO = "JUGADOR_DESCONECTADO"
 MSG_CAPTURA = "CAPTURA"
 MSG_INFO = "INFO"  # Mensajes informativos generales
-MSG_SACAR_TODAS = "SACAR_TODAS"
 
+# ============================================
+# CONFIGURACIÓN DEL JUEGO
+# ============================================
 MAX_JUGADORES = 4
 MIN_JUGADORES = 2
 FICHAS_POR_JUGADOR = 4
 
+# ============================================
+# COLORES DISPONIBLES
+# ============================================
 COLORES = ["rojo", "azul", "amarillo", "verde"]
 
+# ============================================
+# ESTADOS DE FICHA
+# ============================================
 ESTADO_BLOQUEADO = "BLOQUEADO"
 ESTADO_EN_JUEGO = "EN_JUEGO"
 ESTADO_META = "META"
 
+# ============================================
+# FUNCIONES HELPER PARA MENSAJES
+# ============================================
 
 def crear_mensaje(tipo, **kwargs):
     """Crea un mensaje en formato diccionario"""
@@ -77,12 +91,21 @@ def mensaje_error(mensaje):
 def mensaje_victoria(ganador, color):
     return crear_mensaje(MSG_VICTORIA, ganador=ganador, color=color)
 
-def mensaje_info(mensaje, es_admin=None):
+def mensaje_info(mensaje, es_admin=None, es_host=None):
+    """
+    Crea un mensaje informativo general.
+    
+    Args:
+        mensaje: Texto del mensaje
+        es_admin: (opcional) Si es para el admin
+        es_host: (opcional) Si es para el host
+    """
     msg = crear_mensaje(MSG_INFO, mensaje=mensaje)
     if es_admin is not None:
         msg["es_admin"] = bool(es_admin)
+    if es_host is not None:
+        msg["es_host"] = bool(es_host)
     return msg
 
 def mensaje_sacar_todas():
     return crear_mensaje(MSG_SACAR_TODAS)
-

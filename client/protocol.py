@@ -91,8 +91,21 @@ def mensaje_error(mensaje):
 def mensaje_victoria(ganador, color):
     return crear_mensaje(MSG_VICTORIA, ganador=ganador, color=color)
 
-def mensaje_info(mensaje):
-    return crear_mensaje(MSG_INFO, mensaje=mensaje)
+def mensaje_info(mensaje, es_admin=None, es_host=None):
+    """
+    Crea un mensaje informativo general.
+    
+    Args:
+        mensaje: Texto del mensaje
+        es_admin: (opcional) Si es para el admin
+        es_host: (opcional) Si es para el host
+    """
+    msg = crear_mensaje(MSG_INFO, mensaje=mensaje)
+    if es_admin is not None:
+        msg["es_admin"] = bool(es_admin)
+    if es_host is not None:
+        msg["es_host"] = bool(es_host)
+    return msg
 
 def mensaje_sacar_todas():
     return crear_mensaje(MSG_SACAR_TODAS)

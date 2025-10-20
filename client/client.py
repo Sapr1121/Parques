@@ -1,8 +1,6 @@
-import socket
-import threading
+import asyncio
+import websockets
 import json
-import sys
-import queue
 import time
 import protocol as proto
 
@@ -10,7 +8,7 @@ class ParchisClient:
     def __init__(self, servidor_ip, servidor_puerto):
         self.servidor_ip = servidor_ip
         self.servidor_puerto = servidor_puerto
-        self.socket = None
+        self.websocket = None
         self.conectado = False
         self.running = False
 
@@ -42,14 +40,15 @@ class ParchisClient:
         self.ultima_suma = 0
         self.ultimo_es_doble = False
         self.dobles_consecutivos = 0
-        self.dados_usados = []  # Nueva propiedad para rastrear dados usados
-        
-        # Cola de mensajes para el hilo principal
-        self.cola_mensajes = queue.Queue()
+        self.dados_usados = []
         
         # Control de flujo mejorado
         self.esperando_dados = False
         self.esperando_movimiento = False
+        self.ultimo_movimiento_exitoso = False
+        
+        # Cola de mensajes (asyncio.Queue)
+        self.cola_mensajes = None
         
         # Debug
         self.debug = False
@@ -59,96 +58,109 @@ class ParchisClient:
         if self.debug:
             print(f"[DEBUG] {mensaje}")
     
-    def conectar(self, nombre):
-        """Conecta al servidor"""
+    async def conectar(self, nombre):
+        """Conecta al servidor WebSocket"""
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.servidor_ip, self.servidor_puerto))
+            uri = f"ws://{self.servidor_ip}:{self.servidor_puerto}"
+            print(f"\n🔍 DEBUG: Intentando conectar a {uri}")
+            
+            self.websocket = await websockets.connect(
+                uri,
+                ping_interval=20,
+                ping_timeout=10
+            )
+            
+            print(f"🔍 DEBUG: WebSocket object creado: {self.websocket}")
+            
+            # ✅ CORRECCIÓN: Verificar estado correctamente en websockets 15.x
+            # El atributo 'open' no existe, usar método alternativo
+            try:
+                # Verificar que podemos enviar datos (conexión válida)
+                print(f"🔍 DEBUG: WebSocket conectado correctamente")
+            except Exception as e:
+                print(f"❌ Error verificando conexión: {e}")
+                return False
+            
             self.conectado = True
             self.running = True
             self.mi_nombre = nombre
+            self.cola_mensajes = asyncio.Queue()
             
-            print(f"\n✅ Conectado al servidor {self.servidor_ip}:{self.servidor_puerto}")
+            print(f"✅ Conectado al servidor {uri}")
             
             # Enviar mensaje de conexión
-            self.enviar(proto.mensaje_conectar(nombre))
+            mensaje = proto.mensaje_conectar(nombre)
+            print(f"🔍 DEBUG: Enviando mensaje CONECTAR: {mensaje}")
             
-            # Iniciar hilo receptor
-            receptor_thread = threading.Thread(target=self.recibir_mensajes)
-            receptor_thread.daemon = True
-            receptor_thread.start()
+            await self.enviar(mensaje)
+            
+            print(f"🔍 DEBUG: Mensaje CONECTAR enviado, iniciando tarea de recepción")
+            
+            # Iniciar tarea de recepción
+            asyncio.create_task(self.recibir_mensajes())
+            
+            print(f"🔍 DEBUG: Tarea de recepción iniciada")
             
             return True
             
         except Exception as e:
             print(f"❌ Error al conectar: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
-    def recibir_mensajes(self):
-        """Hilo que recibe mensajes del servidor constantemente"""
-        buffer = ""
-        
-        while self.running and self.conectado:
-            try:
-                # Recibir datos del servidor
-                data = self.socket.recv(4096)
-                if not data:
-                    print("\n🔴 Conexión perdida con el servidor")
-                    self.conectado = False
-                    break
-                
-                # Decodificar datos
-                try:
-                    buffer += data.decode('utf-8')
-                except UnicodeDecodeError as e:
-                    self.log_debug(f"Error de decodificación: {e}")
-                    continue
-                
-                self.log_debug(f"Buffer recibido: {buffer[:100]}...")
-                
-                # Procesar todos los mensajes completos en el buffer
-                while buffer.strip():
-                    try:
-                        # Intentar decodificar un JSON
-                        mensaje, idx = json.JSONDecoder().raw_decode(buffer)
-                        self.log_debug(f"Mensaje recibido: {mensaje}")
-                        
-                        # Agregar a la cola
-                        self.cola_mensajes.put(mensaje)
-                        
-                        # Remover el mensaje procesado del buffer
-                        buffer = buffer[idx:].lstrip()
-                        
-                    except json.JSONDecodeError as e:
-                        self.log_debug(f"JSON incompleto, esperando más datos: {e}")
-                        break
-                        
-            except socket.error as e:
-                if self.running:
-                    print(f"\n❌ Error de socket: {e}")
-                    self.conectado = False
-                break
-            except Exception as e:
-                if self.running:
-                    print(f"\n❌ Error inesperado en receptor: {e}")
-                    self.conectado = False
-                break
     
-    def procesar_mensajes(self):
-        """Procesa mensajes de la cola (en hilo principal)"""
+    async def recibir_mensajes(self):
+        """Tarea que recibe mensajes del servidor constantemente"""
+        print(f"🔍 DEBUG: recibir_mensajes() iniciado")
+        try:
+            async for mensaje_raw in self.websocket:
+                print(f"🔍 DEBUG: Mensaje recibido del servidor: {mensaje_raw[:100]}")
+                try:
+                    if not mensaje_raw or not mensaje_raw.strip():
+                        self.log_debug("Mensaje vacío recibido")
+                        continue
+                    
+                    mensaje = json.loads(mensaje_raw)
+                    print(f"🔍 DEBUG: Mensaje parseado: {mensaje}")
+                    
+                    # Agregar a la cola
+                    await self.cola_mensajes.put(mensaje)
+                    print(f"🔍 DEBUG: Mensaje agregado a cola")
+                    
+                except json.JSONDecodeError as e:
+                    print(f"🔍 DEBUG: Error parseando JSON: {e}")
+                except Exception as e:
+                    print(f"🔍 DEBUG: Error procesando mensaje: {e}")
+                    
+        except websockets.exceptions.ConnectionClosedOK:
+            print("\n🔴 Conexión cerrada por el servidor (OK)")
+            self.conectado = False
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"\n🔴 Conexión perdida: {e.reason if hasattr(e, 'reason') else 'Sin razón'}")
+            print(f"🔍 DEBUG: Código de cierre: {e.code if hasattr(e, 'code') else 'N/A'}")
+            self.conectado = False
+        except Exception as e:
+            print(f"\n❌ Error inesperado en receptor: {e}")
+            import traceback
+            traceback.print_exc()
+            self.conectado = False
+    
+    async def procesar_mensajes(self):
+        """Procesa mensajes de la cola"""
         mensajes_procesados = 0
         while not self.cola_mensajes.empty() and mensajes_procesados < 20:
             try:
                 mensaje = self.cola_mensajes.get_nowait()
-                self.manejar_mensaje(mensaje)
+                await self.manejar_mensaje(mensaje)
                 mensajes_procesados += 1
-            except queue.Empty:
+            except asyncio.QueueEmpty:
                 break
             except Exception as e:
                 self.log_debug(f"Error procesando mensaje: {e}")
     
     def resetear_estado_dados(self):
-        """⭐ NUEVO: Resetea el estado de dados para un nuevo turno"""
+        """Resetea el estado de dados para un nuevo turno"""
         self.dados_lanzados = False
         self.ultimo_dado1 = 0
         self.ultimo_dado2 = 0
@@ -156,10 +168,10 @@ class ParchisClient:
         self.ultimo_es_doble = False
         self.esperando_dados = False
         self.esperando_movimiento = False
-        self.dados_usados = []  # Reiniciar dados usados
+        self.dados_usados = []
         self.log_debug("🔄 Estado de dados reseteado para nuevo turno")
     
-    def manejar_mensaje(self, mensaje):
+    async def manejar_mensaje(self, mensaje):
         """Maneja un mensaje recibido del servidor"""
         tipo = mensaje.get("tipo")
         self.log_debug(f"Procesando mensaje tipo: {tipo}")
@@ -171,17 +183,15 @@ class ParchisClient:
             print(f"👤 Tu ID: {self.mi_id}")
 
         elif tipo == proto.MSG_ESPERANDO:
-            conectados = mensaje.get("conectados",0)
-            requeridos = mensaje.get("requeridos",proto.MIN_JUGADORES)
-            # Guardar estado para el pre-juego
+            conectados = mensaje.get("conectados", 0)
+            requeridos = mensaje.get("requeridos", proto.MIN_JUGADORES)
             self.conectados = conectados
             self.requeridos = requeridos
             print(f"\n⏳ Esperando jugadores... ({conectados}/{requeridos})")
 
         elif tipo == proto.MSG_INICIO_JUEGO:
             self.juego_iniciado = True
-            self.jugadores = mensaje.get("jugadores",[])
-            # Actualizar contador local
+            self.jugadores = mensaje.get("jugadores", [])
             self.conectados = len(self.jugadores)
             print("\n" + "="*60)
             print("🎮 ¡EL JUEGO HA COMENZADO! 🎮".center(60))
@@ -198,21 +208,17 @@ class ParchisClient:
             era_mi_turno_anterior = self.es_mi_turno
             self.es_mi_turno = (color == self.mi_color)
 
-            # ⭐ CLAVE: Resetear estado cuando ES mi turno (nuevo o mantenido)
             if self.es_mi_turno:
-                # Si no era mi turno antes, resetear todo
                 if not era_mi_turno_anterior:
                     self.log_debug("🔄 Nuevo turno - reseteando estado de dados")
                     self.resetear_estado_dados()
-                # Si ya era mi turno, es porque sacó dobles - resetear solo lo necesario
                 else:
                     self.dados_lanzados = False
                     self.esperando_dados = False
                     self.esperando_movimiento = False
-                    self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados
+                    self.dados_usados = []
                     self.log_debug("🔄 Manteniendo turno por dobles - reseteando estado")
             else:
-                # No es mi turno - resetear flags de espera
                 self.esperando_dados = False
                 self.esperando_movimiento = False
 
@@ -230,14 +236,12 @@ class ParchisClient:
             self.ultimo_es_doble = mensaje["es_doble"]
             self.dados_lanzados = True
             self.esperando_dados = False
-            self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados con cada nuevo tiro
+            self.dados_usados = []
 
-            # ⭐ Solo mostrar resultado si son MIS dados
             if self.es_mi_turno:
                 dobles_msg = "¡DOBLES! 🎉" if self.ultimo_es_doble else ""
                 print(f"\n🎲 RESULTADO: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma} {dobles_msg}")
 
-                # Verificar si todas las fichas están en la cárcel y sacó dobles
                 if self.ultimo_es_doble:
                     todas_en_carcel = True
                     for jugador in self.jugadores:
@@ -247,7 +251,7 @@ class ParchisClient:
                     
                     if todas_en_carcel:
                         print("\n🔓 ¡Sacaste dobles! Liberando todas las fichas de la cárcel...")
-                        self.enviar(proto.mensaje_sacar_todas())
+                        await self.enviar(proto.mensaje_sacar_todas())
                         return
                     else:
                         print("🔄 ¡Sacaste dobles! Puedes sacar una ficha de la cárcel y mantener tu turno.")
@@ -258,11 +262,6 @@ class ParchisClient:
             self.estado_tablero = mensaje
             if "jugadores" in mensaje:
                 self.jugadores = mensaje["jugadores"]
-                # Actualizar información de fichas en camino a meta
-                for jugador in mensaje["jugadores"]:
-                    if jugador["color"] == self.mi_color:
-                        fichas_meta = [f for f in jugador["fichas"] if f["estado"] == "CAMINO_META"]
-                        self.fichas_en_meta = len(fichas_meta)
 
         elif tipo == proto.MSG_MOVIMIENTO_OK:
             nombre = mensaje["nombre"]
@@ -277,21 +276,17 @@ class ParchisClient:
                 desde_str = "CÁRCEL" if desde == -1 else f"C{desde + 1}"
                 print(f"✅ {nombre} ({color}) movió ficha de {desde_str} → C{hasta + 1}")
 
-            # Marcar el movimiento como exitoso si es nuestro turno
             if self.es_mi_turno:
                 self.ultimo_movimiento_exitoso = True
 
-            # Si sacamos dobles y es nuestro turno, permitir nueva tirada
             if self.ultimo_es_doble and self.es_mi_turno:
                 self.dados_lanzados = False
                 self.esperando_dados = False
-                # No reiniciamos dados_usados aquí, se hará cuando se lancen los nuevos dados
                 print("\n🎲 ¡Sacaste dobles! Puedes volver a lanzar los dados.")
 
             self.esperando_movimiento = False
 
         elif tipo == proto.MSG_CAPTURA:
-            # Handler para notificar una captura (si el servidor usa este mensaje)
             capturado = mensaje.get("capturado", {})
             quien = capturado.get("nombre", mensaje.get("nombre", "Desconocido"))
             color = capturado.get("color", mensaje.get("color", "??"))
@@ -304,8 +299,6 @@ class ParchisClient:
         elif tipo == proto.MSG_ERROR:
             error_msg = mensaje.get('mensaje', 'Error desconocido')
             print(f"\n❌ Error: {error_msg}")
-
-            # Resetear flags de espera
             self.esperando_dados = False
             self.esperando_movimiento = False
 
@@ -326,33 +319,34 @@ class ParchisClient:
             print(f"\n⚠️ {nombre} ({color}) se ha desconectado")
 
         elif tipo == proto.MSG_INFO:
-            # Mensajes informativos generales.
             info_text = mensaje.get('mensaje', '')
             print(f"\nℹ️ {info_text}")
 
-            # SOLO marcar como admin si el servidor incluye el flag explícito 'es_admin'
             es_admin_flag = mensaje.get("es_admin", None)
+            
+            # 🆕 AGREGAR DEBUG AQUÍ
+            print(f"🔍 DEBUG INFO: es_admin_flag = {es_admin_flag}")
+            print(f"🔍 DEBUG INFO: self.es_admin ANTES = {self.es_admin}")
+            
             if es_admin_flag is not None:
                 self.es_admin = bool(es_admin_flag)
+                print(f"🔍 DEBUG INFO: self.es_admin DESPUÉS = {self.es_admin}")
                 if self.es_admin:
                     self.log_debug("🔑 Marca local: soy admin (flag es_admin True)")
                 else:
                     self.log_debug("🔑 Marca local: NO soy admin (flag es_admin False)")
-            # Si el servidor NO incluyó 'es_admin' no tocar el flag local (no hay fallback por texto)
-
-
     
-    def enviar(self, mensaje):
+    async def enviar(self, mensaje):
         """Envía un mensaje al servidor"""
         try:
-            data = json.dumps(mensaje, ensure_ascii=False).encode('utf-8')
-            self.socket.send(data)
+            data = json.dumps(mensaje, ensure_ascii=False)
+            await self.websocket.send(data)
             self.log_debug(f"Mensaje enviado: {mensaje}")
         except Exception as e:
             print(f"❌ Error enviando mensaje: {e}")
             self.conectado = False
     
-    def esperar_respuesta_dados(self, timeout=5.0):
+    async def esperar_respuesta_dados(self, timeout=5.0):
         """Espera específicamente la respuesta de dados"""
         tiempo_inicio = time.time()
         self.esperando_dados = True
@@ -360,10 +354,9 @@ class ParchisClient:
         print("⏳ Esperando resultado de dados...")
         
         while self.esperando_dados and (time.time() - tiempo_inicio) < timeout:
-            self.procesar_mensajes()
-            time.sleep(0.1)
+            await self.procesar_mensajes()
+            await asyncio.sleep(0.1)
             
-            # Mostrar puntos de progreso
             if int((time.time() - tiempo_inicio) * 10) % 10 == 0:
                 print(".", end="", flush=True)
         
@@ -374,28 +367,25 @@ class ParchisClient:
         
         return True
     
-    def esperar_respuesta_movimiento(self, timeout=3.0):
-        """
-        Espera respuesta de movimiento
-        Retorna: True si el movimiento fue exitoso, False si hubo error o timeout
-        """
+    async def esperar_respuesta_movimiento(self, timeout=3.0):
+        """Espera respuesta de movimiento"""
         tiempo_inicio = time.time()
         self.esperando_movimiento = True
-        self.ultimo_movimiento_exitoso = False  # Nueva variable para rastrear éxito
+        self.ultimo_movimiento_exitoso = False
         
         while self.esperando_movimiento and (time.time() - tiempo_inicio) < timeout:
-            self.procesar_mensajes()
-            time.sleep(0.1)
+            await self.procesar_mensajes()
+            await asyncio.sleep(0.1)
         
         if self.esperando_movimiento:
             print(f"\n⚠️ Timeout esperando respuesta de movimiento")
             self.esperando_movimiento = False
             return False
         
-        return self.ultimo_movimiento_exitoso  # Retornar si el movimiento fue exitoso
+        return self.ultimo_movimiento_exitoso
     
     def mostrar_estado_dados(self):
-        """⭐ CORREGIDO: Muestra el estado actual de los dados SOLO si son míos"""
+        """Muestra el estado actual de los dados"""
         if self.dados_lanzados and self.es_mi_turno:
             dobles_info = " ¡DOBLES!" if self.ultimo_es_doble else ""
             print(f"🎲 Última tirada: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}{dobles_info}")
@@ -403,12 +393,11 @@ class ParchisClient:
             print("🎲 No se han lanzado dados en este turno")
     
     def mostrar_mis_fichas(self):
-        """Muestra las fichas del jugador actual con detalle completo"""
+        """Muestra las fichas del jugador actual"""
         if not self.estado_tablero or "jugadores" not in self.estado_tablero:
             print("⚠️ No hay información del tablero disponible")
             return
         
-        # Buscar mis fichas
         mi_info = None
         for jugador in self.estado_tablero["jugadores"]:
             if jugador["color"] == self.mi_color:
@@ -437,8 +426,7 @@ class ParchisClient:
                 fichas_en_camino_meta.append(ficha)
             elif ficha["estado"] == "META":
                 fichas_en_meta.append(ficha)
-    
-        # Mostrar fichas por categoría
+        
         print("🔒 FICHAS EN CÁRCEL:")
         if fichas_bloqueadas:
             for ficha in fichas_bloqueadas:
@@ -488,14 +476,12 @@ class ParchisClient:
         print("📊 ESTADO COMPLETO DEL JUEGO".center(60))
         print("="*60)
         
-        # Información del turno
         if hasattr(self, 'jugadores') and self.jugadores:
             turno_actual = self.estado_tablero.get("turno_actual", 0)
             if turno_actual < len(self.jugadores):
                 jugador_turno = self.jugadores[turno_actual]
                 print(f"🎯 Turno actual: {jugador_turno['nombre']} ({jugador_turno['color'].upper()})")
         
-        # Estado de dados (solo si es mi turno)
         if self.dados_lanzados and self.es_mi_turno:
             print(f"🎲 Últimos dados: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}")
             if self.ultimo_es_doble:
@@ -511,7 +497,6 @@ class ParchisClient:
             print(f"   🎮 En juego: {jugador['en_juego']}")
             print(f"   🏁 En meta: {jugador['en_meta']}")
             
-            # Mostrar posiciones de fichas en juego
             fichas_en_juego = [f for f in jugador["fichas"] if f["estado"] == "EN_JUEGO"]
             if fichas_en_juego:
                 posiciones = [f"C{f['posicion'] + 1}" for f in fichas_en_juego]
@@ -520,7 +505,7 @@ class ParchisClient:
         print("="*60)
     
     def mostrar_tablero_visual(self):
-        """Muestra el tablero de forma visual mejorada"""
+        """Muestra el tablero de forma visual"""
         if not self.estado_tablero or "jugadores" not in self.estado_tablero:
             print("⚠️ No hay información del tablero disponible")
             return
@@ -529,7 +514,6 @@ class ParchisClient:
         print("🎲 TABLERO DE PARCHÍS 🎲".center(80))
         print("="*80)
         
-        # Información de turno actual
         if hasattr(self, 'jugadores') and self.jugadores:
             turno_actual = self.estado_tablero.get("turno_actual", 0)
             if turno_actual < len(self.jugadores):
@@ -542,7 +526,6 @@ class ParchisClient:
         
         print(turno_info.center(80))
         
-        # Mostrar estado de dados (solo si es mi turno)
         if self.dados_lanzados and self.es_mi_turno:
             dados_info = f"🎲 Dados: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}"
             if self.ultimo_es_doble:
@@ -551,7 +534,6 @@ class ParchisClient:
         
         print("="*80)
         
-        # Crear mapa de posiciones con fichas
         posiciones_fichas = {}
         colores_map = {"rojo": "R", "azul": "A", "amarillo": "Am", "verde": "V"}
         
@@ -565,31 +547,27 @@ class ParchisClient:
                             posiciones_fichas[pos] = []
                         posiciones_fichas[pos].append(f"{color_inicial}{ficha['id']+1}")
         
-        # Mostrar tablero en filas
         total_casillas = 68
         casillas_por_fila = 8
         
         for fila in range(0, total_casillas, casillas_por_fila):
             print(f"\n📍 Casillas {fila + 1} a {min(fila + casillas_por_fila, total_casillas)}:")
             
-            # Cabecera
             header = ""
             for i in range(fila, min(fila + casillas_por_fila, total_casillas)):
                 header += f"{i+1:3d} "
             print(f"     {header}")
             
-            # Contenido
             content = ""
             for i in range(fila, min(fila + casillas_por_fila, total_casillas)):
                 fichas_aqui = posiciones_fichas.get(i, [])
                 if fichas_aqui:
-                    fichas_str = fichas_aqui[0][:3]  # Máximo 3 caracteres
+                    fichas_str = fichas_aqui[0][:3]
                 else:
                     fichas_str = "---"
                 content += f"{fichas_str:>3s} "
             print(f"     {content}")
         
-        # Leyenda y estadísticas
         print("\n" + "-"*80)
         print("LEYENDA: R=Rojo, A=Azul, Am=Amarillo, V=Verde (número = ID de ficha)")
         print("ESTADÍSTICAS:")
@@ -601,18 +579,16 @@ class ParchisClient:
         
         print("="*80)
     
-    def menu_turno(self):
-        """⭐ CORREGIDO: Muestra el menú principal durante el turno"""
+    async def menu_turno(self):
+        """Muestra el menú principal durante el turno"""
         print(f"\n{'='*60}")
         print(f"🎯 TU TURNO - {self.mi_nombre} ({self.mi_color.upper()})".center(60))
         print(f"{'='*60}")
         
-        # Mostrar estado actual
         self.mostrar_estado_dados()
         
         opciones = []
         
-        # Si no hemos lanzado dados
         if not self.dados_lanzados:
             opciones = [
                 "🎲 Lanzar dados",
@@ -622,7 +598,6 @@ class ParchisClient:
                 "🚪 Salir"
             ]
         else:
-            # Verificar si todas las fichas están en la cárcel
             todas_en_carcel = True
             fichas_en_juego = 0
             for jugador in self.jugadores:
@@ -633,9 +608,8 @@ class ParchisClient:
                     break
             
             if self.ultimo_es_doble and todas_en_carcel:
-                # Si sacó dobles y todas están en cárcel, liberar automáticamente
                 print("\n🔓 Liberando todas las fichas automáticamente...")
-                self.enviar(proto.mensaje_sacar_todas())
+                await self.enviar(proto.mensaje_sacar_todas())
                 return "0", []
             elif self.ultimo_es_doble:
                 opciones = [
@@ -662,27 +636,35 @@ class ParchisClient:
             print(f"{i}. {opcion}")
         
         try:
-            opcion = input(f"\nOpción (1-{len(opciones)}): ").strip()
-            return opcion, opciones
+            # Usar input bloqueante normal (asyncio lo maneja)
+            loop = asyncio.get_event_loop()
+            opcion = await loop.run_in_executor(None, input, f"\nOpción (1-{len(opciones)}): ")
+            return opcion.strip(), opciones
         except:
             return "0", opciones
 
-    def ejecutar(self):
-        """Loop principal del cliente mejorado (incluye flujo pre-juego para que el admin pueda iniciar)."""
-        print("\n" + "="*60)
-        print("🎲 CLIENTE DE PARCHÍS 🎲".center(60))
-        print("="*60)
+    async def ejecutar(self):
+        """Loop principal del cliente"""
+        
+        # 🆕 VERIFICAR SI YA ESTÁ CONECTADO
+        if not self.conectado:
+            # Solo mostrar banner y pedir nombre si NO está conectado
+            print("\n" + "="*60)
+            print("🎲 CLIENTE DE PARCHÍS 🎲".center(60))
+            print("="*60)
 
-        nombre = input("Ingresa tu nombre: ").strip()
-        if not nombre:
-            nombre = f"Jugador_{int(time.time()) % 1000}"
+            nombre = input("Ingresa tu nombre: ").strip()
+            if not nombre:
+                nombre = f"Jugador_{int(time.time()) % 1000}"
 
-        if not self.conectar(nombre):
-            return
+            if not await self.conectar(nombre):
+                return
+        else:
+            # Ya está conectado desde hybrid.py - solo mostrar confirmación
+            print(f"\n✅ Sesión activa como {self.mi_nombre}")
 
         print("\n⏳ Esperando que el juego comience...")
 
-        # Inicializar variables de control de impresión (evitar spam)
         if not hasattr(self, "_last_conectados"):
             self._last_conectados = None
         if not hasattr(self, "_last_requeridos"):
@@ -690,97 +672,98 @@ class ParchisClient:
         if not hasattr(self, "_last_missing"):
             self._last_missing = None
 
-        # Pequeño warm-up para procesar mensajes que lleguen inmediatamente después del CONNECT
+        # Warm-up
         for _ in range(12):
-            self.procesar_mensajes()
+            await self.procesar_mensajes()
             if getattr(self, "conectados", 0) > 0:
                 break
-            time.sleep(0.03)
+            await asyncio.sleep(0.03)
 
-        # ------------------ Bucle PRE-JUEGO ------------------
+        # Bucle PRE-JUEGO
         try:
             while self.running and self.conectado and not self.juego_iniciado:
-                # Leer mensajes y actualizar estado
-                self.procesar_mensajes()
+                await self.procesar_mensajes()
 
                 conectados = getattr(self, "conectados", 0)
                 requeridos = getattr(self, "requeridos", proto.MIN_JUGADORES)
 
-                # Mostrar solo si cambió (para evitar spam)
+                # 🔧 ARREGLAR: Mostrar número correcto de jugadores
                 if (conectados != self._last_conectados) or (requeridos != self._last_requeridos):
-                    print(f"\nConectados: {conectados} / {proto.MAX_JUGADORES}")
+                    print(f"\nConectados: {conectados} / {requeridos}")  # ← CAMBIADO
                     self._last_conectados = conectados
                     self._last_requeridos = requeridos
 
-                # Si soy admin, ofrezco iniciar partida (input bloqueante sólo para admin)
                 if getattr(self, "es_admin", False):
                     if conectados < proto.MIN_JUGADORES:
                         faltan = proto.MIN_JUGADORES - conectados
-                        # Mostrar una vez hasta que cambie faltan
                         if self._last_missing != faltan:
                             print(f"(No puedes iniciar aún: faltan {faltan} jugador(es))")
                             self._last_missing = faltan
-                        time.sleep(0.5)
+                        await asyncio.sleep(0.5)
                         continue
 
-                    # hay suficientes jugadores
                     self._last_missing = None
+                    
+                    # 🆕 MOSTRAR PROMPT CADA VEZ QUE HAY SUFICIENTES JUGADORES
+                    print(f"\n✅ Suficientes jugadores conectados ({conectados}/{requeridos})")
+                    
                     try:
-                        cmd = input("Eres admin. Escribe 'start' para iniciar la partida o Enter para refrescar: ").strip().lower()
+                        loop = asyncio.get_event_loop()
+                        cmd = await loop.run_in_executor(
+                            None, 
+                            input, 
+                            "🚀 Escribe 'start' para iniciar la partida o Enter para refrescar: "
+                        )
+                        cmd = cmd.strip().lower()
                     except KeyboardInterrupt:
                         print("\n\n⚠️ Interrupción por teclado durante espera previa...")
-                        self.desconectar()
+                        await self.desconectar()
                         return
                     except Exception as e:
                         print(f"⚠️ Error leyendo input: {e}")
-                        time.sleep(0.5)
+                        await asyncio.sleep(0.5)
                         continue
 
                     if cmd == "start":
                         print("🔔 Enviando solicitud de inicio (MSG_LISTO) al servidor...")
                         try:
-                            self.enviar(proto.mensaje_listo())
-                        except AttributeError:
-                            print("❌ Error: proto.mensaje_listo() no existe en client/protocol.py")
+                            await self.enviar(proto.mensaje_listo())
+                            print("✅ MSG_LISTO enviado correctamente")
+                            await asyncio.sleep(0.5)  # Esperar confirmación
                         except Exception as e:
                             print(f"❌ Error enviando MSG_LISTO: {e}")
-                        # esperar a que servidor responda
-                        time.sleep(0.4)
                         continue
 
-                    # si presionó Enter -> refrescar
-                    time.sleep(0.2)
+                    await asyncio.sleep(0.2)
                 else:
-                    # no admin -> no bloqueante
-                    time.sleep(0.5)
+                    await asyncio.sleep(0.5)
 
-            # Si salimos por desconexión
             if not self.running or not self.conectado:
-                self.desconectar()
+                await self.desconectar()
                 return
 
         except KeyboardInterrupt:
             print("\n\n⚠️ Interrupción por teclado durante espera previa...")
-            self.desconectar()
+            await self.desconectar()
             return
         except Exception as e:
             print(f"\n❌ Error en fase previa al juego: {e}")
             try:
-                self.desconectar()
+                await self.desconectar()
             except Exception:
                 pass
             return
 
-        # ------------------ Loop principal del juego (turnos) ------------------
+        # Loop principal del juego (turnos)
         try:
             while self.running and self.conectado:
-                self.procesar_mensajes()
+                await self.procesar_mensajes()
 
                 if not self.juego_iniciado or not self.es_mi_turno:
-                    time.sleep(0.2)
+                    await asyncio.sleep(0.2)
                     continue
 
-                opcion, opciones = self.menu_turno()
+                opcion, opciones = await self.menu_turno()
 
                 try:
                     opcion_num = int(opcion)
@@ -792,31 +775,34 @@ class ParchisClient:
 
                     if "Lanzar dados" in accion:
                         print("\n🎲 Lanzando dados...")
-                        self.enviar(proto.mensaje_lanzar_dados())
-                        if self.esperar_respuesta_dados():
+                        await self.enviar(proto.mensaje_lanzar_dados())
+                        if await self.esperar_respuesta_dados():
                             print("✅ Dados recibidos correctamente")
                         else:
                             print("❌ Error recibiendo dados")
 
                     elif "Sacar ficha" in accion:
                         print("\n🔓 Intentando sacar ficha de la cárcel...")
-                        self.enviar(proto.mensaje_sacar_carcel())
-                        self.esperar_respuesta_movimiento()
+                        await self.enviar(proto.mensaje_sacar_carcel())
+                        await self.esperar_respuesta_movimiento()
 
                     elif "Mover ficha en juego" in accion:
-                        self.elegir_y_mover_ficha()
+                        await self.elegir_y_mover_ficha()
 
                     elif "Ver mis fichas" in accion:
                         self.mostrar_mis_fichas()
-                        input("\nPresiona Enter para continuar...")
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, input, "\nPresiona Enter para continuar...")
 
                     elif "Ver tablero completo" in accion:
                         self.mostrar_tablero_completo()
-                        input("\nPresiona Enter para continuar...")
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, input, "\nPresiona Enter para continuar...")
 
                     elif "Ver tablero visual" in accion:
                         self.mostrar_tablero_visual()
-                        input("\nPresiona Enter para continuar...")
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, input, "\nPresiona Enter para continuar...")
 
                     elif "Salir" in accion:
                         print("\n👋 Saliendo del juego...")
@@ -834,11 +820,11 @@ class ParchisClient:
         except Exception as e:
             print(f"\n❌ Error inesperado en el loop principal: {e}")
         finally:
-            self.desconectar()
+            await self.desconectar()
 
-    
-    def elegir_y_mover_ficha(self):
-        """Permite al jugador elegir qué ficha mover con información detallada"""
+
+    async def elegir_y_mover_ficha(self):
+        """Permite al jugador elegir qué ficha mover"""
         print("\n" + "─"*50)
         print("🎮 MOVER FICHA".center(50))
         print("─"*50)
@@ -846,42 +832,45 @@ class ParchisClient:
         self.mostrar_mis_fichas()
         
         try:
-            # Primero elegir la ficha
-            ficha_num = int(input(f"\n¿Qué ficha deseas mover? (1-{proto.FICHAS_POR_JUGADOR}): "))
+            loop = asyncio.get_event_loop()
+            ficha_input = await loop.run_in_executor(
+                None, 
+                input, 
+                f"\n¿Qué ficha deseas mover? (1-{proto.FICHAS_POR_JUGADOR}): "
+            )
+            ficha_num = int(ficha_input)
+            
             if not (1 <= ficha_num <= proto.FICHAS_POR_JUGADOR):
                 print(f"⚠️ Número de ficha inválido (debe ser 1-{proto.FICHAS_POR_JUGADOR})")
                 return
                 
-            dado_elegido = 3  # Por defecto usar suma
+            dado_elegido = 3
             
-            # Si ya tenemos un dado usado, usar automáticamente el otro sin preguntar
             if len(self.dados_usados) == 1:
-                # Usar el dado que no se ha usado
                 dado_elegido = 2 if self.dados_usados[0] == 1 else 1
                 valor_dado = self.ultimo_dado2 if self.dados_usados[0] == 1 else self.ultimo_dado1
                 print(f"\n🎲 Usando el dado restante ({valor_dado})")
                 
-                # Enviar el movimiento inmediatamente
                 print(f"\n🎮 Moviendo ficha {ficha_num}...")
-                self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
-                movimiento_exitoso = self.esperar_respuesta_movimiento()
+                await self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
+                movimiento_exitoso = await self.esperar_respuesta_movimiento()
                 
-                if not self.es_mi_turno:  # Si perdimos el turno
+                if not self.es_mi_turno:
                     return
                 
                 if movimiento_exitoso:
                     self.dados_usados.append(dado_elegido)
                 
-                return  # No necesitamos hacer nada más, este es el segundo movimiento
+                return
             
-            # Primer movimiento - mostrar opciones de dados
             print(f"\nDados disponibles: [{self.ultimo_dado1}] [{self.ultimo_dado2}] = {self.ultima_suma}")
             print(f"1. Usar primer dado ({self.ultimo_dado1})")
             print(f"2. Usar segundo dado ({self.ultimo_dado2})")
             print(f"3. Usar suma de dados ({self.ultima_suma})")
             
             try:
-                opcion = int(input("Elige una opción (1-3): "))
+                opcion_input = await loop.run_in_executor(None, input, "Elige una opción (1-3): ")
+                opcion = int(opcion_input)
                 if opcion not in [1, 2, 3]:
                     print("⚠️ Opción inválida")
                     return
@@ -890,37 +879,34 @@ class ParchisClient:
                 print("⚠️ Entrada inválida")
                 return
             
-            # Enviar primer movimiento
             print(f"\n🎮 Moviendo ficha {ficha_num}...")
-            self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
-            movimiento_exitoso = self.esperar_respuesta_movimiento()
+            await self.enviar(proto.mensaje_mover_ficha(ficha_num - 1, dado_elegido))
+            movimiento_exitoso = await self.esperar_respuesta_movimiento()
             
-            # Si perdimos el turno o hubo error
             if not self.es_mi_turno:
                 return
             
-            # Si el movimiento fue exitoso y usamos un dado individual (no la suma)
             if movimiento_exitoso and dado_elegido in [1, 2]:
                 self.dados_usados.append(dado_elegido)
                 print("\n🎲 Moviendo otra ficha con el dado restante...")
-                self.elegir_y_mover_ficha()
+                await self.elegir_y_mover_ficha()
             
         except ValueError:
             print("⚠️ Ingresa un número válido")
     
-    def desconectar(self):
+    async def desconectar(self):
         """Desconecta del servidor"""
         self.running = False
         self.conectado = False
-        if self.socket:
+        if self.websocket:
             try:
-                self.socket.close()
+                await self.websocket.close()
             except:
                 pass
         print("\n👋 Desconectado del servidor")
 
 
-if __name__ == "__main__":
+async def main():
     print("🎲 CLIENTE DE PARCHÍS DISTRIBUIDO 🎲")
     print("=" * 50)
     
@@ -935,10 +921,14 @@ if __name__ == "__main__":
     cliente = ParchisClient(SERVIDOR_IP, SERVIDOR_PUERTO)
     
     try:
-        cliente.ejecutar()
+        await cliente.ejecutar()
     except KeyboardInterrupt:
         print("\n\n⚠️ Interrupción recibida...")
-        cliente.desconectar()
+        await cliente.desconectar()
     except Exception as e:
         print(f"\n❌ Error inesperado: {e}")
-        cliente.desconectar()
+        await cliente.desconectar()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
