@@ -52,6 +52,163 @@ class ParchisClient:
         
         # Debug
         self.debug = False
+
+
+
+        # Aqui nosotros vamos a manejar el algoritmo de sincronizacion
+        self.clock_offset = 0.0
+        self.rtt_promedio = 0.0
+        self.sincronizado = False
+        self.historial_offsets = []
+
+    """
+    sincronizar_reloj()
+_esperar_sync_response()
+_calcular_std()
+obtener_tiempo_sincronizado()
+mostrar_info_sincronizacion()
+    """
+
+           
+    async def sincronizar_reloj(self, rondas=5):
+
+        print("\n" + "="*60)
+        print("⏱️  SINCRONIZACIÓN DE RELOJ".center(60))
+        print("="*60)
+        print(f"Realizando {rondas} rondas de sincronización...")
+    
+        offsets = []
+        rtts = []
+    
+        for ronda in range(rondas):
+            try:
+                # T1: Timestamp del cliente al enviar
+                t1 = time.time()
+            
+                # Enviar solicitud de sincronización
+                await self.enviar(proto.mensaje_sync_request(t1))
+            
+                # Esperar respuesta (con timeout)
+                respuesta = await self._esperar_sync_response(timeout=2.0)
+            
+                if not respuesta:
+                    print(f"⚠️  Ronda {ronda + 1}/{rondas}: Timeout")
+                    continue
+            
+                # T4: Timestamp del cliente al recibir
+                t4 = time.time()
+            
+                # Extraer timestamps del servidor
+                t1_eco = respuesta.get("t1")
+                t2 = respuesta.get("t2")  # Servidor recibió
+                t3 = respuesta.get("t3")  # Servidor envió
+            
+                # Verificar que T1 coincida (validación)
+                if abs(t1 - t1_eco) > 0.001:  # Tolerancia de 1ms
+                    print(f"⚠️  Ronda {ronda + 1}/{rondas}: T1 no coincide")
+                    continue
+            
+                # Calcular RTT (Round Trip Time)
+                rtt = (t4 - t1) - (t3 - t2)
+            
+                # Calcular offset del reloj
+                # offset = ((T2 - T1) + (T3 - T4)) / 2
+                offset = ((t2 - t1) + (t3 - t4)) / 2
+            
+                offsets.append(offset)
+                rtts.append(rtt)
+            
+                print(f"✓ Ronda {ronda + 1}/{rondas}: "
+                    f"offset={offset*1000:.2f}ms, RTT={rtt*1000:.2f}ms")
+            
+            except Exception as e:
+                print(f"❌ Error en ronda {ronda + 1}: {e}")
+                continue
+    
+        if not offsets:
+            print("\n❌ Sincronización FALLIDA: No se completó ninguna ronda")
+            return False
+    
+        # Calcular promedios
+        self.clock_offset = sum(offsets) / len(offsets)
+        self.rtt_promedio = sum(rtts) / len(rtts)
+        self.historial_offsets = offsets
+        self.sincronizado = True
+    
+        # Mostrar resultados
+        print("\n" + "-"*60)
+        print("📊 RESULTADOS DE SINCRONIZACIÓN:")
+        print(f"   • Offset del reloj: {self.clock_offset*1000:.2f} ms")
+        print(f"   • RTT promedio: {self.rtt_promedio*1000:.2f} ms")
+        print(f"   • Desviación estándar: {self._calcular_std(offsets)*1000:.2f} ms")
+        print(f"   • Rondas exitosas: {len(offsets)}/{rondas}")
+        print("="*60 + "\n")
+    
+        return True
+
+    async def _esperar_sync_response(self, timeout=2.0):
+
+        tiempo_inicio = time.time()
+    
+        while (time.time() - tiempo_inicio) < timeout:
+            # Procesar mensajes de la cola
+            if not self.cola_mensajes.empty():
+                try:
+                    mensaje = self.cola_mensajes.get_nowait()
+                
+                    # Si es SYNC_RESPONSE, devolverlo
+                    if mensaje.get("tipo") == proto.MSG_SYNC_RESPONSE:
+                        return mensaje
+                    else:
+                        # Si es otro mensaje, volver a ponerlo en la cola
+                        await self.cola_mensajes.put(mensaje)
+                    
+                except asyncio.QueueEmpty:
+                    pass
+        
+            await asyncio.sleep(0.01)  # 10ms
+    
+        return None
+
+    def _calcular_std(self, valores):
+        """Calcula la desviación estándar de una lista de valores"""
+        if len(valores) < 2:
+            return 0.0
+    
+        promedio = sum(valores) / len(valores)
+        varianza = sum((x - promedio) ** 2 for x in valores) / len(valores)
+        return varianza ** 0.5
+
+    def obtener_tiempo_sincronizado(self):
+
+        if not self.sincronizado:
+            print("⚠️  Advertencia: Reloj no sincronizado, usando tiempo local")
+            return time.time()
+    
+        return time.time() + self.clock_offset
+
+    def mostrar_info_sincronizacion(self):
+        """Muestra información sobre la sincronización actual"""
+        if not self.sincronizado:
+            print("⚠️  Reloj NO sincronizado")
+            return
+    
+        print("\n" + "="*60)
+        print("⏱️  INFORMACIÓN DE SINCRONIZACIÓN".center(60))
+        print("="*60)
+        print(f"Estado: {'✅ SINCRONIZADO' if self.sincronizado else '❌ NO SINCRONIZADO'}")
+        print(f"Offset del reloj: {self.clock_offset*1000:.2f} ms")
+        print(f"RTT promedio: {self.rtt_promedio*1000:.2f} ms")
+    
+        if self.historial_offsets:
+            print(f"Mejor offset: {min(self.historial_offsets)*1000:.2f} ms")
+            print(f"Peor offset: {max(self.historial_offsets)*1000:.2f} ms")
+            print(f"Desviación estándar: {self._calcular_std(self.historial_offsets)*1000:.2f} ms")
+    
+        print(f"\nTiempo local: {time.time():.6f}")
+        print(f"Tiempo sincronizado: {self.obtener_tiempo_sincronizado():.6f}")
+        print("="*60)
+    
         
     def log_debug(self, mensaje):
         """Logging para debug"""
@@ -87,28 +244,35 @@ class ParchisClient:
             self.cola_mensajes = asyncio.Queue()
             
             print(f"✅ Conectado al servidor {uri}")
+
+
+            print(f"🔍 DEBUG: Iniciando tarea de recepción")
+            asyncio.create_task(self.recibir_mensajes())
+
+            await asyncio.sleep(0.1)
+
+            print("\n🔄 Sincronizando reloj con el servidor...")
+            sync_exitosa = await self.sincronizar_reloj(rondas=5)
+            
+            if not sync_exitosa:
+                print("⚠️  Advertencia: Sincronización falló, continuando sin sincronización")
             
             # Enviar mensaje de conexión
             mensaje = proto.mensaje_conectar(nombre)
             print(f"🔍 DEBUG: Enviando mensaje CONECTAR: {mensaje}")
-            
+        
+
             await self.enviar(mensaje)
-            
-            print(f"🔍 DEBUG: Mensaje CONECTAR enviado, iniciando tarea de recepción")
-            
-            # Iniciar tarea de recepción
-            asyncio.create_task(self.recibir_mensajes())
-            
-            print(f"🔍 DEBUG: Tarea de recepción iniciada")
-            
+        
+            print(f"🔍 DEBUG: Mensaje CONECTAR enviado")
+        
             return True
-            
+        
         except Exception as e:
             print(f"❌ Error al conectar: {e}")
             import traceback
             traceback.print_exc()
             return False
-    
     
     async def recibir_mensajes(self):
         """Tarea que recibe mensajes del servidor constantemente"""

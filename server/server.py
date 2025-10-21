@@ -5,6 +5,9 @@ import logging
 import inspect
 from game_manager import GameManager
 import protocol as proto
+import time
+
+
 
 # Configurar logging
 logging.basicConfig(
@@ -101,12 +104,34 @@ class ParchisServer:
                     
                     # ============ HANDSHAKE INICIAL ============
                     if not conectado_correctamente:
+                        # 🆕 PERMITIR MSG_SYNC_REQUEST antes del handshake
+                        if mensaje.get("tipo") == proto.MSG_SYNC_REQUEST:
+                            logger.debug(f"SYNC_REQUEST (pre-handshake) recibido de {addr}")
+                            
+                            t1 = mensaje.get("t1")
+                            t2 = time.time()
+                            t3 = time.time()
+                            
+                            respuesta = proto.mensaje_sync_response(t1, t2, t3)
+                            
+                            # Enviar directamente (sin usar self.enviar que verifica clientes_activos)
+                            try:
+                                mensaje_json = json.dumps(respuesta, ensure_ascii=False)
+                                await websocket.send(mensaje_json)
+                                logger.debug(f"SYNC_RESPONSE enviado (pre-handshake)")
+                            except Exception as e:
+                                logger.error(f"Error enviando SYNC_RESPONSE pre-handshake: {e}")
+                            
+                            continue  # ← Continuar esperando más mensajes (no hacer handshake aún)
+                        
+                        # Si no es SYNC_REQUEST ni MSG_CONECTAR, rechazar
                         if mensaje.get("tipo") != proto.MSG_CONECTAR:
                             logger.warning(f"Protocolo inválido de {addr}: {mensaje.get('tipo', 'UNKNOWN')}")
                             await self.enviar(websocket, proto.mensaje_error("Protocolo inválido: se esperaba CONECTAR"))
                             await websocket.close(code=1008, reason="Protocolo inválido")
                             return
                         
+                        # ============ PROCESAR MSG_CONECTAR ============
                         nombre = mensaje.get("nombre", "").strip()
                         if not nombre:
                             nombre = f"Jugador_{websocket.remote_address[1]}"
@@ -156,7 +181,7 @@ class ParchisServer:
                         
                         conectado_correctamente = True
                         continue
-                    
+                                        
                     # ============ MENSAJES NORMALES ============
                     if conectado_correctamente:
                         logger.debug(f"Procesando mensaje de {nombre}: {mensaje}")
@@ -261,10 +286,33 @@ class ParchisServer:
             cliente_info = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
             logger.debug(f"Procesando {tipo} de {cliente_info}")
 
+
+            if tipo == proto.MSG_SYNC_REQUEST:
+                logger.debug(f"SYNC_REQUEST recibido de {cliente_info}")
+                
+                # T1: Timestamp del cliente (recibido en el mensaje)
+                t1 = mensaje.get("t1")
+                
+                # T2: Timestamp cuando el servidor recibió el mensaje
+                t2 = time.time()
+                
+                # T3: Timestamp cuando el servidor envía la respuesta
+                t3 = time.time()
+                
+                # Enviar respuesta inmediatamente
+                respuesta = proto.mensaje_sync_response(t1, t2, t3)
+                await self.enviar(websocket, respuesta)
+                
+                logger.debug(f"SYNC_RESPONSE enviado: T1={t1:.6f}, T2={t2:.6f}, T3={t3:.6f}")
+                return
+
             if tipo == proto.MSG_LISTO:
                 logger.info(f"MSG_LISTO recibido de {cliente_info}")
+                # Línea de debug eliminada (variables no existen en este scope)
 
                 admin_sock = getattr(self.game_manager, "admin_cliente", None)
+
+
                 if websocket != admin_sock:
                     logger.warning(f"Intento de iniciar partida por no-admin: {cliente_info}")
                     await self.enviar(websocket, proto.mensaje_error("Sólo el administrador puede iniciar la partida"))

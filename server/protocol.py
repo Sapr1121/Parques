@@ -109,3 +109,16 @@ def mensaje_info(mensaje, es_admin=None, es_host=None):
 
 def mensaje_sacar_todas():
     return crear_mensaje(MSG_SACAR_TODAS)
+
+
+# ============================================
+# Sincronizacion PING/PONG
+# ============================================
+MSG_SYNC_REQUEST = "SYNC_REQUEST"
+MSG_SYNC_RESPONSE = "SYNC_RESPONSE"
+
+def mensaje_sync_request(t1):
+    return crear_mensaje(MSG_SYNC_REQUEST, t1=t1)
+
+def mensaje_sync_response(t1, t2, t3):
+    return crear_mensaje(MSG_SYNC_RESPONSE, t1=t1, t2=t2, t3=t3)
