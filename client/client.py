@@ -230,9 +230,7 @@ mostrar_info_sincronizacion()
             print(f"🔍 DEBUG: WebSocket object creado: {self.websocket}")
             
             # ✅ CORRECCIÓN: Verificar estado correctamente en websockets 15.x
-            # El atributo 'open' no existe, usar método alternativo
             try:
-                # Verificar que podemos enviar datos (conexión válida)
                 print(f"🔍 DEBUG: WebSocket conectado correctamente")
             except Exception as e:
                 print(f"❌ Error verificando conexión: {e}")
@@ -245,7 +243,6 @@ mostrar_info_sincronizacion()
             
             print(f"✅ Conectado al servidor {uri}")
 
-
             print(f"🔍 DEBUG: Iniciando tarea de recepción")
             asyncio.create_task(self.recibir_mensajes())
 
@@ -257,23 +254,120 @@ mostrar_info_sincronizacion()
             if not sync_exitosa:
                 print("⚠️  Advertencia: Sincronización falló, continuando sin sincronización")
             
-            # Enviar mensaje de conexión
-            mensaje = proto.mensaje_conectar(nombre)
+            # 🆕 NUEVO: Solicitar colores disponibles antes de conectar
+            print("\n🎨 Solicitando colores disponibles...")
+            colores_disponibles = await self.solicitar_colores_disponibles()
+            
+            if not colores_disponibles:
+                print("❌ Error: No se pudieron obtener colores disponibles")
+                return False
+            
+            print(f"✅ Colores disponibles: {colores_disponibles}")
+            
+            # 🆕 NUEVO: Permitir al usuario elegir color
+            color_elegido = await self.elegir_color(colores_disponibles)
+            
+            if not color_elegido:
+                print("❌ Error: No se seleccionó ningún color")
+                return False
+            
+            print(f"✅ Color seleccionado: {color_elegido}")
+            
+            # Enviar mensaje de conexión CON el color elegido
+            mensaje = proto.mensaje_conectar(nombre, color_elegido)  # 🆕 Agregar color
             print(f"🔍 DEBUG: Enviando mensaje CONECTAR: {mensaje}")
-        
-
+            
             await self.enviar(mensaje)
-        
+            
             print(f"🔍 DEBUG: Mensaje CONECTAR enviado")
-        
+            
             return True
-        
+            
         except Exception as e:
             print(f"❌ Error al conectar: {e}")
             import traceback
             traceback.print_exc()
             return False
     
+    async def solicitar_colores_disponibles(self):
+        """Solicita al servidor la lista de colores disponibles"""
+        try:
+            # Enviar solicitud
+            mensaje = proto.mensaje_solicitar_colores()
+            await self.enviar(mensaje)
+            
+            # Esperar respuesta (con timeout)
+            timeout = 5.0
+            tiempo_inicio = asyncio.get_event_loop().time()
+            
+            while (asyncio.get_event_loop().time() - tiempo_inicio) < timeout:
+                try:
+                    # Intentar obtener mensaje de la cola
+                    mensaje = await asyncio.wait_for(
+                        self.cola_mensajes.get(), 
+                        timeout=0.5
+                    )
+                    
+                    if mensaje.get("tipo") == proto.MSG_COLORES_DISPONIBLES:
+                        colores = mensaje.get("colores", [])
+                        return colores
+                    else:
+                        # Si no es el mensaje esperado, volver a poner en cola
+                        await self.cola_mensajes.put(mensaje)
+                        
+                except asyncio.TimeoutError:
+                    continue
+            
+            print("⚠️ Timeout esperando colores disponibles")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error solicitando colores: {e}")
+            return None
+
+    async def elegir_color(self, colores_disponibles):
+        """
+        Permite al usuario elegir un color de los disponibles.
+        Puedes personalizar esto según tu interfaz (consola, GUI, etc.)
+        """
+        print("\n" + "="*50)
+        print("🎨 SELECCIÓN DE COLOR")
+        print("="*50)
+        
+        if not colores_disponibles:
+            print("❌ No hay colores disponibles")
+            return None
+        
+        # Mostrar colores con números
+        for i, color in enumerate(colores_disponibles, 1):
+            print(f"{i}. {color.upper()}")
+        
+        print("="*50)
+        
+        # Obtener selección del usuario
+        while True:
+            try:
+                # Si estás usando una interfaz gráfica, aquí llamarías a tu método de GUI
+                seleccion = input(f"Elige tu color (1-{len(colores_disponibles)}): ").strip()
+                
+                indice = int(seleccion) - 1
+                
+                if 0 <= indice < len(colores_disponibles):
+                    color_elegido = colores_disponibles[indice]
+                    return color_elegido
+                else:
+                    print(f"❌ Opción inválida. Elige entre 1 y {len(colores_disponibles)}")
+                    
+            except ValueError:
+                print("❌ Entrada inválida. Ingresa un número.")
+            except KeyboardInterrupt:
+                print("\n❌ Selección cancelada")
+                return None
+            except Exception as e:
+                print(f"❌ Error: {e}")    
+        
+
+
     async def recibir_mensajes(self):
         """Tarea que recibe mensajes del servidor constantemente"""
         print(f"🔍 DEBUG: recibir_mensajes() iniciado")

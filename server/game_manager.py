@@ -38,21 +38,23 @@ class GameManager:
         self.accion_realizada = False
         self.debe_avanzar_turno = False
     
-    def agregar_jugador(self, websocket, nombre):
+    def agregar_jugador(self, websocket, nombre, color_elegido=None):
         """
         Agrega un jugador al juego.
-        Retorna: (color, error, es_admin)
-          - color: string del color asignado (o None si error)
-          - error: mensaje de error (o None si exito)
-          - es_admin: True si es el primer jugador (administrador)
+        Args:
+            websocket: conexión del cliente
+            nombre: nombre del jugador
+            color_elegido: color seleccionado por el jugador (opcional)
+        
+        Retorna: (color, error, es_admin, es_host)
         """
         with self.lock:
-            logger.debug(f"🔒 Agregando jugador {nombre}")
+            logger.debug(f"🔒 Agregando jugador {nombre} con color preferido: {color_elegido}")
 
             # Validar límite de jugadores
             if len(self.jugadores) >= proto.MAX_JUGADORES:
                 logger.warning("Intento de agregar jugador pero el servidor está lleno")
-                return None, "Servidor lleno", False
+                return None, "Servidor lleno", False, False
 
             # Determinar colores disponibles
             colores_usados = [j.color for j in self.jugadores]
@@ -60,18 +62,28 @@ class GameManager:
 
             if not colores_disponibles:
                 logger.warning("No hay colores disponibles al agregar jugador")
-                return None, "No hay colores disponibles", False
+                return None, "No hay colores disponibles", False, False
 
-            color = colores_disponibles[0]
+            # Validar color elegido
+            if color_elegido:
+                if color_elegido not in proto.COLORES:
+                    return None, f"Color '{color_elegido}' no válido", False, False
+                if color_elegido in colores_usados:
+                    return None, f"Color '{color_elegido}' ya está en uso", False, False
+                color = color_elegido
+            else:
+                # Asignación automática si no se especifica color
+                color = colores_disponibles[0]
+
             jugador_id = self.next_player_id
-            self.next_player_id += 1  # Incrementar para el próximo jugador
+            self.next_player_id += 1
 
             usuario = User(nombre, color)
 
             # Crear fichas bloqueadas en la cárcel
             for i in range(proto.FICHAS_POR_JUGADOR):
                 ficha = tkn.gameToken(color, proto.ESTADO_BLOQUEADO)
-                ficha.id = i  # asignar id directamente
+                ficha.id = i
                 usuario.agregar_ficha(ficha)
 
             # Añadir a lista de jugadores y mapping de clientes
@@ -94,16 +106,27 @@ class GameManager:
             else:
                 usuario.es_admin = False
 
-            logger.info(f"✅ Jugador {nombre} agregado como {color} (ID: {jugador_id}, Admin: {es_admin})")
+            # Gestionar host
+            es_host = False
             if len(self.jugadores) == 1:
                 self.host_cliente = websocket
                 self.host_info = {"nombre": nombre, "color": color, "socket": websocket}
                 es_host = True
                 logger.info(f"🏠 {nombre} es ahora el HOST del juego")
-            else:
-                es_host = False
+
+            logger.info(f"✅ Jugador {nombre} agregado como {color} (ID: {jugador_id}, Admin: {es_admin}, Host: {es_host})")
             return color, None, es_admin, es_host
             
+
+    def obtener_colores_disponibles(self):
+        """
+        Retorna lista de colores que aún no están siendo usados.
+        """
+        with self.lock:
+            colores_usados = [j.color for j in self.jugadores]
+            colores_disponibles = [c for c in proto.COLORES if c not in colores_usados]
+            logger.debug(f"🎨 Colores disponibles: {colores_disponibles}")
+            return colores_disponibles
     
     def eliminar_jugador(self, socket_cliente):
         """

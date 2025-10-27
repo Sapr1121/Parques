@@ -102,7 +102,7 @@ class ParchisServer:
                     mensaje = json.loads(mensaje_raw)
                     logger.debug(f"Mensaje recibido de {addr}: {mensaje}")
                     
-                    # ============ HANDSHAKE INICIAL ============
+                    
                     if not conectado_correctamente:
                         # 🆕 PERMITIR MSG_SYNC_REQUEST antes del handshake
                         if mensaje.get("tipo") == proto.MSG_SYNC_REQUEST:
@@ -122,9 +122,25 @@ class ParchisServer:
                             except Exception as e:
                                 logger.error(f"Error enviando SYNC_RESPONSE pre-handshake: {e}")
                             
-                            continue  # ← Continuar esperando más mensajes (no hacer handshake aún)
+                            continue  # ← Continuar esperando más mensajes
                         
-                        # Si no es SYNC_REQUEST ni MSG_CONECTAR, rechazar
+                        # 🆕 PERMITIR MSG_SOLICITAR_COLORES antes del handshake
+                        if mensaje.get("tipo") == proto.MSG_SOLICITAR_COLORES:
+                            logger.debug(f"SOLICITAR_COLORES (pre-handshake) recibido de {addr}")
+                            
+                            colores = self.game_manager.obtener_colores_disponibles()
+                            
+                            try:
+                                respuesta = proto.mensaje_colores_disponibles(colores)
+                                mensaje_json = json.dumps(respuesta, ensure_ascii=False)
+                                await websocket.send(mensaje_json)
+                                logger.debug(f"COLORES_DISPONIBLES enviado (pre-handshake): {colores}")
+                            except Exception as e:
+                                logger.error(f"Error enviando COLORES_DISPONIBLES pre-handshake: {e}")
+                            
+                            continue  # ← Continuar esperando más mensajes
+                        
+                        # Si no es SYNC_REQUEST ni SOLICITAR_COLORES ni MSG_CONECTAR, rechazar
                         if mensaje.get("tipo") != proto.MSG_CONECTAR:
                             logger.warning(f"Protocolo inválido de {addr}: {mensaje.get('tipo', 'UNKNOWN')}")
                             await self.enviar(websocket, proto.mensaje_error("Protocolo inválido: se esperaba CONECTAR"))
@@ -133,13 +149,15 @@ class ParchisServer:
                         
                         # ============ PROCESAR MSG_CONECTAR ============
                         nombre = mensaje.get("nombre", "").strip()
+                        color_elegido = mensaje.get("color", None)  # 🆕 Obtener color del mensaje
+                        
                         if not nombre:
                             nombre = f"Jugador_{websocket.remote_address[1]}"
                         
-                        logger.info(f"Cliente {addr} solicita conectarse como '{nombre}'")
+                        logger.info(f"Cliente {addr} solicita conectarse como '{nombre}' con color '{color_elegido}'")
                         
-                        # Agregar jugador (verificar que sea thread-safe)
-                        color, error, es_admin, es_host = self.game_manager.agregar_jugador(websocket, nombre)
+                        # Agregar jugador CON el color elegido
+                        color, error, es_admin, es_host = self.game_manager.agregar_jugador(websocket, nombre, color_elegido)
                         
                         if error:
                             logger.warning(f"{nombre} no pudo conectarse: {error}")
@@ -286,7 +304,6 @@ class ParchisServer:
             cliente_info = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
             logger.debug(f"Procesando {tipo} de {cliente_info}")
 
-
             if tipo == proto.MSG_SYNC_REQUEST:
                 logger.debug(f"SYNC_REQUEST recibido de {cliente_info}")
                 
@@ -306,12 +323,19 @@ class ParchisServer:
                 logger.debug(f"SYNC_RESPONSE enviado: T1={t1:.6f}, T2={t2:.6f}, T3={t3:.6f}")
                 return
 
+            # 🆕 ============ NUEVO BLOQUE: Manejar solicitud de colores ============
+            if tipo == proto.MSG_SOLICITAR_COLORES:
+                logger.info(f"Solicitud de colores disponibles de {cliente_info}")
+                colores = self.game_manager.obtener_colores_disponibles()
+                await self.enviar(websocket, proto.mensaje_colores_disponibles(colores))
+                return
+            # 🆕 ============ FIN DEL NUEVO BLOQUE ============
+
             if tipo == proto.MSG_LISTO:
                 logger.info(f"MSG_LISTO recibido de {cliente_info}")
                 # Línea de debug eliminada (variables no existen en este scope)
 
                 admin_sock = getattr(self.game_manager, "admin_cliente", None)
-
 
                 if websocket != admin_sock:
                     logger.warning(f"Intento de iniciar partida por no-admin: {cliente_info}")

@@ -7,7 +7,8 @@ MSG_SACAR_CARCEL = "SACAR_CARCEL"
 MSG_MOVER_FICHA = "MOVER_FICHA"
 MSG_DESCONECTAR = "DESCONECTAR"
 MSG_LISTO = "LISTO"  # Cliente listo para empezar
-MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel    
+MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel   
+MSG_SOLICITAR_COLORES = "SOLICITAR_COLORES" 
 
 # ============================================
 # TIPOS DE MENSAJES: SERVIDOR → CLIENTE
@@ -24,6 +25,7 @@ MSG_VICTORIA = "VICTORIA"
 MSG_JUGADOR_DESCONECTADO = "JUGADOR_DESCONECTADO"
 MSG_CAPTURA = "CAPTURA"
 MSG_INFO = "INFO"  # Mensajes informativos generales
+MSG_COLORES_DISPONIBLES = "COLORES_DISPONIBLES"
 
 # ============================================
 # CONFIGURACIÓN DEL JUEGO
@@ -57,8 +59,20 @@ def crear_mensaje(tipo, **kwargs):
 def mensaje_listo():
     return crear_mensaje(MSG_LISTO)
 
-def mensaje_conectar(nombre):
-    return crear_mensaje(MSG_CONECTAR, nombre=nombre)
+def mensaje_conectar(nombre, color=None):  
+    msg = crear_mensaje(MSG_CONECTAR, nombre=nombre)
+    if color:
+        msg["color"] = color
+    return msg
+
+def mensaje_solicitar_colores():
+    """Solicita la lista de colores disponibles"""
+    return crear_mensaje(MSG_SOLICITAR_COLORES)
+
+
+def mensaje_colores_disponibles(colores):
+    """Crea mensaje con colores disponibles"""
+    return crear_mensaje(MSG_COLORES_DISPONIBLES, colores=colores)
 
 def mensaje_lanzar_dados():
     return crear_mensaje(MSG_LANZAR_DADOS)
