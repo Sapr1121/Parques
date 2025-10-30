@@ -47,6 +47,13 @@ class ParchisClient:
         self.esperando_movimiento = False
         self.ultimo_movimiento_exitoso = False
         
+        # ⭐ NUEVO: Estado de determinación de turnos
+        self.en_determinacion = False
+        self.mi_turno_determinado = False
+        self.ya_lance_en_determinacion = False
+        self.jugadores_en_desempate = []
+        self.estoy_en_desempate = False
+        
         # Cola de mensajes (asyncio.Queue)
         self.cola_mensajes = None
         
@@ -576,6 +583,86 @@ mostrar_info_sincronizacion()
             color = mensaje.get("color", "??")
             print(f"\n⚠️ {nombre} ({color}) se ha desconectado")
 
+        # ⭐ NUEVO: Handlers para determinación de turnos
+        elif tipo == proto.MSG_DETERMINACION_INICIO:
+            self.en_determinacion = True
+            self.ya_lance_en_determinacion = False
+            self.estoy_en_desempate = False
+            mensaje_texto = mensaje.get("mensaje", "Determinando orden de turnos...")
+            
+            print("\n" + "="*60)
+            print("🎲 DETERMINACIÓN DE TURNOS 🎲".center(60))
+            print("="*60)
+            print(f"\n{mensaje_texto}")
+            print("\n💡 Lanza los dados para determinar quién empieza primero.")
+            print("   El jugador con la suma más alta comenzará el juego.")
+            print("="*60 + "\n")
+        
+        elif tipo == proto.MSG_DETERMINACION_RESULTADO:
+            nombre = mensaje.get("nombre")
+            color = mensaje.get("color")
+            dado1 = mensaje.get("dado1")
+            dado2 = mensaje.get("dado2")
+            suma = mensaje.get("suma")
+            
+            es_mi_tirada = (color == self.mi_color)
+            
+            if es_mi_tirada:
+                self.ya_lance_en_determinacion = True
+                print(f"\n🎲 Tu tirada: [{dado1}] [{dado2}] = {suma}")
+            else:
+                print(f"\n📊 {nombre} ({color}): [{dado1}] [{dado2}] = {suma}")
+        
+        elif tipo == proto.MSG_DETERMINACION_EMPATE:
+            jugadores = mensaje.get("jugadores", [])
+            valor = mensaje.get("valor")
+            mensaje_texto = mensaje.get("mensaje", "")
+            
+            print("\n" + "⚔️ "*15)
+            print(f"EMPATE CON {valor} PUNTOS".center(60))
+            print("⚔️ "*15)
+            print(f"\n{mensaje_texto}")
+            print("\nJugadores empatados que deben volver a tirar:")
+            
+            # Verificar si estoy en el desempate
+            self.estoy_en_desempate = False
+            for j in jugadores:
+                marca = ""
+                if j['color'] == self.mi_color:
+                    marca = "👉 "
+                    self.estoy_en_desempate = True
+                    self.ya_lance_en_determinacion = False  # Permitir tirar de nuevo
+                print(f"{marca}   • {j['nombre']} ({j['color']}) - {j['suma']} puntos")
+            
+            if self.estoy_en_desempate:
+                print("\n💡 Lanza los dados nuevamente para desempatar.")
+            print("="*60 + "\n")
+        
+        elif tipo == proto.MSG_DETERMINACION_GANADOR:
+            ganador = mensaje.get("ganador", {})
+            orden = mensaje.get("orden", [])
+            mensaje_texto = mensaje.get("mensaje", "")
+            
+            print("\n" + "🏆"*30)
+            print("DETERMINACIÓN COMPLETADA".center(60))
+            print("🏆"*30)
+            
+            print(f"\n{mensaje_texto}")
+            print(f"\n🥇 Ganador: {ganador['nombre']} ({ganador['color'].upper()})")
+            
+            print("\n📋 Orden de turnos establecido:")
+            for i, j in enumerate(orden, 1):
+                marca = "👉" if j['color'] == self.mi_color else "  "
+                print(f"{marca} {i}. {j['nombre']} ({j['color'].upper()})")
+            
+            print("\n🎮 El juego comenzará en breve...")
+            print("="*60 + "\n")
+            
+            # Resetear flags de determinación
+            self.en_determinacion = False
+            self.ya_lance_en_determinacion = False
+            self.estoy_en_desempate = False
+
         elif tipo == proto.MSG_INFO:
             info_text = mensaje.get('mensaje', '')
             print(f"\nℹ️ {info_text}")
@@ -939,7 +1026,8 @@ mostrar_info_sincronizacion()
 
         # Bucle PRE-JUEGO
         try:
-            while self.running and self.conectado and not self.juego_iniciado:
+            # ⭐ IMPORTANTE: Salir del loop cuando inicia la determinación O el juego
+            while self.running and self.conectado and not self.juego_iniciado and not self.en_determinacion:
                 await self.procesar_mensajes()
 
                 conectados = getattr(self, "conectados", 0)
@@ -987,7 +1075,14 @@ mostrar_info_sincronizacion()
                         try:
                             await self.enviar(proto.mensaje_listo())
                             print("✅ MSG_LISTO enviado correctamente")
-                            await asyncio.sleep(0.5)  # Esperar confirmación
+                            
+                            # Esperar a que llegue MSG_DETERMINACION_INICIO
+                            await asyncio.sleep(0.3)
+                            await self.procesar_mensajes()
+                            
+                            # Salir del loop de admin para entrar al loop de determinación
+                            break
+                            
                         except Exception as e:
                             print(f"❌ Error enviando MSG_LISTO: {e}")
                         continue
@@ -1006,6 +1101,84 @@ mostrar_info_sincronizacion()
             return
         except Exception as e:
             print(f"\n❌ Error en fase previa al juego: {e}")
+            try:
+                await self.desconectar()
+            except Exception:
+                pass
+            return
+
+        # ⭐ NUEVO: Loop de determinación de turnos
+        try:
+            # Variable para controlar si ya mostramos el prompt
+            prompt_mostrado = False
+            
+            while self.running and self.conectado and self.en_determinacion:
+                await self.procesar_mensajes()
+                
+                # Si ya lancé en esta ronda, solo esperar
+                if self.ya_lance_en_determinacion:
+                    prompt_mostrado = False  # Resetear para la siguiente ronda
+                    await asyncio.sleep(0.3)
+                    continue
+                
+                # Si estoy en desempate pero no soy parte, esperar
+                if self.jugadores_en_desempate and not self.estoy_en_desempate:
+                    prompt_mostrado = False
+                    await asyncio.sleep(0.3)
+                    continue
+                
+                # Mostrar prompt solo una vez
+                if not prompt_mostrado:
+                    print("\n" + "="*60)
+                    print("💡 ES TU TURNO PARA LANZAR LOS DADOS".center(60))
+                    print("="*60)
+                    print("\n📋 Comandos disponibles:")
+                    print("   • 'lanzar' o 'l' - Lanzar los dados")
+                    print("="*60)
+                    prompt_mostrado = True
+                
+                try:
+                    loop = asyncio.get_event_loop()
+                    cmd = await loop.run_in_executor(
+                        None,
+                        input,
+                        "\n🎲 Comando: "
+                    )
+                    cmd = cmd.strip().lower()
+                    
+                    if cmd in ['lanzar', 'l']:
+                        # Generar dados en el cliente
+                        import random
+                        dado1 = random.randint(1, 6)
+                        dado2 = random.randint(1, 6)
+                        
+                        print(f"\n🎲 Lanzando dados: [{dado1}] [{dado2}]...")
+                        await self.enviar(proto.mensaje_determinacion_tirada(dado1, dado2))
+                        
+                        # Marcar que ya lancé
+                        self.ya_lance_en_determinacion = True
+                        prompt_mostrado = False
+                        
+                        # Esperar un poco para procesar la respuesta
+                        await asyncio.sleep(0.5)
+                    else:
+                        print("⚠️ Comando no reconocido. Usa 'lanzar' o 'l'")
+                        # No resetear prompt_mostrado para que no se repita el encabezado
+                        
+                except KeyboardInterrupt:
+                    print("\n\n⚠️ Interrupción durante determinación...")
+                    await self.desconectar()
+                    return
+                except Exception as e:
+                    print(f"❌ Error en determinación: {e}")
+                    await asyncio.sleep(0.5)
+            
+            if not self.running or not self.conectado:
+                await self.desconectar()
+                return
+                
+        except Exception as e:
+            print(f"\n❌ Error en fase de determinación: {e}")
             try:
                 await self.desconectar()
             except Exception:

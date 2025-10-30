@@ -37,6 +37,12 @@ class GameManager:
         # Control de estado de turno
         self.accion_realizada = False
         self.debe_avanzar_turno = False
+        
+        # ⭐ NUEVO: Control de determinación de turnos
+        self.determinacion_activa = False
+        self.tiradas_determinacion = {}  # {websocket: {'nombre', 'color', 'dado1', 'dado2', 'suma'}}
+        self.jugadores_en_desempate = set()  # Jugadores que deben tirar en desempate
+        self.orden_turnos_determinado = []  # Lista ordenada de jugadores según determinación
     
     def agregar_jugador(self, websocket, nombre, color_elegido=None):
         """
@@ -225,6 +231,210 @@ class GameManager:
                 if jugador_actual == jugador_desconectado:
                     logger.info("Jugador con turno activo se desconectó, reseteando estado...")
                     self._resetear_estado_turno()
+    
+    # ============================================
+    # MÉTODOS DE DETERMINACIÓN DE TURNOS
+    # ============================================
+    
+    def iniciar_determinacion_turnos(self):
+        """
+        Inicia la fase de determinación de turnos.
+        Todos los jugadores deben lanzar los dados una vez.
+        """
+        with self.lock:
+            if not self.puede_iniciar():
+                logger.error("No hay suficientes jugadores para iniciar determinación")
+                return False
+            
+            self.determinacion_activa = True
+            self.tiradas_determinacion = {}
+            self.jugadores_en_desempate = set()
+            
+            logger.info("✨ Iniciando fase de determinación de turnos")
+            logger.info(f"Jugadores participantes: {[info['nombre'] for info in self.clientes.values()]}")
+            return True
+    
+    def registrar_tirada_determinacion(self, websocket, dado1, dado2):
+        """
+        Registra la tirada de un jugador durante la determinación.
+        Retorna: (fase_completa, resultado)
+            - fase_completa: True si todos han tirado
+            - resultado: dict con información del estado
+        """
+        with self.lock:
+            if not self.determinacion_activa:
+                return False, {"error": "No hay determinación activa"}
+            
+            if websocket not in self.clientes:
+                return False, {"error": "Cliente no válido"}
+            
+            info = self.clientes[websocket]
+            
+            # Si hay desempate activo, verificar que este jugador deba tirar
+            if self.jugadores_en_desempate:
+                if websocket not in self.jugadores_en_desempate:
+                    return False, {"error": "No estás en el desempate"}
+            else:
+                # Primera ronda: verificar que no haya tirado ya
+                if websocket in self.tiradas_determinacion:
+                    return False, {"error": "Ya realizaste tu tirada"}
+            
+            # Registrar tirada
+            suma = dado1 + dado2
+            self.tiradas_determinacion[websocket] = {
+                'nombre': info['nombre'],
+                'color': info['color'],
+                'dado1': dado1,
+                'dado2': dado2,
+                'suma': suma
+            }
+            
+            logger.info(f"📝 Tirada registrada: {info['nombre']} ({info['color']}) = [{dado1}][{dado2}] = {suma}")
+            
+            # Verificar si todos los jugadores requeridos han tirado
+            if self.jugadores_en_desempate:
+                # Modo desempate: solo esperamos a los jugadores en desempate
+                jugadores_esperados = self.jugadores_en_desempate
+            else:
+                # Primera ronda: esperamos a todos
+                jugadores_esperados = set(self.clientes.keys())
+            
+            jugadores_que_tiraron = set(self.tiradas_determinacion.keys())
+            
+            if not jugadores_esperados.issubset(jugadores_que_tiraron):
+                # Aún faltan jugadores
+                pendientes = len(jugadores_esperados - jugadores_que_tiraron)
+                return False, {"pendientes": pendientes}
+            
+            # Todos han tirado, analizar resultados
+            return self._analizar_resultados_determinacion()
+    
+    def _analizar_resultados_determinacion(self):
+        """
+        Analiza los resultados de las tiradas y determina si hay ganador o empate.
+        Retorna: (fase_completa, resultado)
+        """
+        with self.lock:
+            if not self.tiradas_determinacion:
+                return False, {"error": "No hay tiradas registradas"}
+            
+            # Encontrar el puntaje más alto
+            max_suma = max(t['suma'] for t in self.tiradas_determinacion.values())
+            
+            # Encontrar todos los jugadores con el puntaje más alto
+            jugadores_max = [
+                (ws, datos) for ws, datos in self.tiradas_determinacion.items()
+                if datos['suma'] == max_suma
+            ]
+            
+            logger.info(f"🎯 Puntaje más alto: {max_suma}")
+            logger.info(f"🎯 Jugadores con puntaje máximo: {[d['nombre'] for _, d in jugadores_max]}")
+            
+            if len(jugadores_max) == 1:
+                # ¡Hay un ganador claro!
+                websocket_ganador, datos_ganador = jugadores_max[0]
+                return self._finalizar_determinacion(websocket_ganador, datos_ganador)
+            else:
+                # Empate: preparar nueva ronda solo con los empatados
+                return self._preparar_desempate(jugadores_max, max_suma)
+    
+    def _preparar_desempate(self, jugadores_empatados, valor_empate):
+        """
+        Prepara una ronda de desempate entre los jugadores empatados.
+        """
+        with self.lock:
+            # Limpiar tiradas anteriores
+            self.tiradas_determinacion = {}
+            
+            # Marcar solo a los jugadores empatados para la siguiente ronda
+            self.jugadores_en_desempate = {ws for ws, _ in jugadores_empatados}
+            
+            jugadores_info = [
+                {
+                    'nombre': datos['nombre'],
+                    'color': datos['color'],
+                    'suma': datos['suma']
+                }
+                for _, datos in jugadores_empatados
+            ]
+            
+            logger.info(f"🔄 Empate detectado con {valor_empate} puntos")
+            logger.info(f"🔄 Jugadores en desempate: {[j['nombre'] for j in jugadores_info]}")
+            
+            return False, {
+                "empate": True,
+                "jugadores": jugadores_info,
+                "valor": valor_empate
+            }
+    
+    def _finalizar_determinacion(self, websocket_ganador, datos_ganador):
+        """
+        Finaliza la determinación estableciendo el orden de turnos.
+        """
+        with self.lock:
+            color_ganador = datos_ganador['color']
+            
+            # Secuencias fijas de turnos según el color ganador
+            SECUENCIAS_TURNOS = {
+                'rojo': ['rojo', 'verde', 'amarillo', 'azul'],
+                'verde': ['verde', 'amarillo', 'azul', 'rojo'],
+                'amarillo': ['amarillo', 'azul', 'rojo', 'verde'],
+                'azul': ['azul', 'rojo', 'verde', 'amarillo']
+            }
+            
+            secuencia = SECUENCIAS_TURNOS.get(color_ganador, ['rojo', 'verde', 'amarillo', 'azul'])
+            
+            logger.info(f"🏆 Ganador: {datos_ganador['nombre']} ({color_ganador})")
+            logger.info(f"📋 Secuencia de turnos: {' -> '.join(secuencia)}")
+            
+            # Crear mapa de color -> websocket
+            color_a_websocket = {
+                info['color']: ws
+                for ws, info in self.clientes.items()
+            }
+            
+            # Ordenar jugadores según la secuencia
+            self.orden_turnos_determinado = []
+            for color in secuencia:
+                if color in color_a_websocket:
+                    ws = color_a_websocket[color]
+                    self.orden_turnos_determinado.append(ws)
+            
+            # Reordenar la lista de jugadores según el orden determinado
+            jugadores_ordenados = []
+            for ws in self.orden_turnos_determinado:
+                jugador = self.clientes[ws]['jugador']
+                jugadores_ordenados.append(jugador)
+            
+            self.jugadores = jugadores_ordenados
+            
+            logger.info(f"✅ Orden final establecido: {' -> '.join([self.clientes[ws]['nombre'] for ws in self.orden_turnos_determinado])}")
+            
+            # Preparar información del orden para enviar al cliente
+            orden_info = [
+                {
+                    'nombre': self.clientes[ws]['nombre'],
+                    'color': self.clientes[ws]['color']
+                }
+                for ws in self.orden_turnos_determinado
+            ]
+            
+            # Finalizar la determinación
+            self.determinacion_activa = False
+            self.tiradas_determinacion = {}
+            self.jugadores_en_desempate = set()
+            
+            return True, {
+                "ganador": {
+                    'nombre': datos_ganador['nombre'],
+                    'color': datos_ganador['color']
+                },
+                "orden": orden_info
+            }
+    
+    # ============================================
+    # FIN MÉTODOS DE DETERMINACIÓN DE TURNOS
+    # ============================================
     
     def puede_iniciar(self):
         with self.lock:

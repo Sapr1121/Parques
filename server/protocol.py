@@ -27,6 +27,13 @@ MSG_CAPTURA = "CAPTURA"
 MSG_INFO = "INFO"  # Mensajes informativos generales
 MSG_COLORES_DISPONIBLES = "COLORES_DISPONIBLES"
 
+# Mensajes para determinación de turnos
+MSG_DETERMINACION_INICIO = "DETERMINACION_INICIO"  # Servidor inicia fase de determinación
+MSG_DETERMINACION_TIRADA = "DETERMINACION_TIRADA"  # Cliente envía su tirada
+MSG_DETERMINACION_RESULTADO = "DETERMINACION_RESULTADO"  # Servidor envía resultado de tirada
+MSG_DETERMINACION_EMPATE = "DETERMINACION_EMPATE"  # Servidor notifica empate
+MSG_DETERMINACION_GANADOR = "DETERMINACION_GANADOR"  # Servidor anuncia ganador y orden
+
 # ============================================
 # CONFIGURACIÓN DEL JUEGO
 # ============================================
@@ -136,3 +143,39 @@ def mensaje_sync_request(t1):
 
 def mensaje_sync_response(t1, t2, t3):
     return crear_mensaje(MSG_SYNC_RESPONSE, t1=t1, t2=t2, t3=t3)
+
+# ============================================
+# Mensajes para Determinación de Turnos
+# ============================================
+
+def mensaje_determinacion_inicio():
+    """Servidor inicia la fase de determinación de turnos"""
+    return crear_mensaje(MSG_DETERMINACION_INICIO, 
+                        mensaje="Todos los jugadores deben lanzar los dados una vez para determinar el orden")
+
+def mensaje_determinacion_tirada(dado1, dado2):
+    """Cliente envía su tirada durante la determinación"""
+    return crear_mensaje(MSG_DETERMINACION_TIRADA, dado1=dado1, dado2=dado2)
+
+def mensaje_determinacion_resultado(nombre, color, dado1, dado2, suma):
+    """Servidor notifica el resultado de una tirada durante determinación"""
+    return crear_mensaje(MSG_DETERMINACION_RESULTADO,
+                        nombre=nombre,
+                        color=color,
+                        dado1=dado1,
+                        dado2=dado2,
+                        suma=suma)
+
+def mensaje_determinacion_empate(jugadores_empatados, valor_empate):
+    """Servidor notifica que hay un empate y quiénes deben volver a tirar"""
+    return crear_mensaje(MSG_DETERMINACION_EMPATE,
+                        jugadores=jugadores_empatados,
+                        valor=valor_empate,
+                        mensaje=f"Empate con {valor_empate} puntos. Los jugadores empatados deben volver a tirar.")
+
+def mensaje_determinacion_ganador(ganador_nombre, ganador_color, orden_turnos):
+    """Servidor anuncia el ganador y el orden final de turnos"""
+    return crear_mensaje(MSG_DETERMINACION_GANADOR,
+                        ganador={"nombre": ganador_nombre, "color": ganador_color},
+                        orden=orden_turnos,
+                        mensaje=f"{ganador_nombre} ({ganador_color}) obtuvo el puntaje más alto y comenzará primero")

@@ -333,7 +333,6 @@ class ParchisServer:
 
             if tipo == proto.MSG_LISTO:
                 logger.info(f"MSG_LISTO recibido de {cliente_info}")
-                # Línea de debug eliminada (variables no existen en este scope)
 
                 admin_sock = getattr(self.game_manager, "admin_cliente", None)
 
@@ -352,8 +351,15 @@ class ParchisServer:
                     await self.enviar(websocket, proto.mensaje_info("El juego ya está iniciado"))
                     return
 
-                logger.info("Administrador autorizado. Iniciando el juego...")
-                await self.iniciar_juego()
+                # ⭐ NUEVO: Iniciar fase de determinación de turnos en lugar del juego directo
+                logger.info("Administrador autorizado. Iniciando fase de determinación de turnos...")
+                await self.iniciar_determinacion()
+                return
+            
+            # ⭐ NUEVO: Handler para tiradas durante la determinación
+            if tipo == proto.MSG_DETERMINACION_TIRADA:
+                logger.info(f"MSG_DETERMINACION_TIRADA recibido de {cliente_info}")
+                await self.procesar_tirada_determinacion(websocket, mensaje)
                 return
 
             if tipo == proto.MSG_LANZAR_DADOS:
@@ -569,6 +575,125 @@ class ParchisServer:
                 logger.info("Jugador mantiene turno - puede lanzar dados nuevamente")
                 await asyncio.sleep(0.1)
                 await self.broadcast(proto.mensaje_turno(info["nombre"], info["color"]))
+    
+    # ============================================
+    # MÉTODOS DE DETERMINACIÓN DE TURNOS
+    # ============================================
+    
+    async def iniciar_determinacion(self):
+        """Inicia la fase de determinación de turnos"""
+        try:
+            exito = self.game_manager.iniciar_determinacion_turnos()
+            
+            if not exito:
+                logger.error("No se pudo iniciar la determinación de turnos")
+                await self.broadcast(proto.mensaje_error("No se pudo iniciar la determinación"))
+                return
+            
+            # Notificar a todos los jugadores que deben lanzar dados
+            logger.info("📢 Enviando MSG_DETERMINACION_INICIO a todos los jugadores")
+            await self.broadcast(proto.mensaje_determinacion_inicio())
+            
+            logger.info("✅ Fase de determinación iniciada correctamente")
+            
+        except Exception as e:
+            logger.error(f"Error iniciando determinación: {e}", exc_info=True)
+            await self.broadcast(proto.mensaje_error("Error iniciando la fase de determinación"))
+    
+    async def procesar_tirada_determinacion(self, websocket, mensaje):
+        """Procesa una tirada durante la fase de determinación"""
+        try:
+            dado1 = mensaje.get("dado1")
+            dado2 = mensaje.get("dado2")
+            
+            if dado1 is None or dado2 is None:
+                await self.enviar(websocket, proto.mensaje_error("Faltan valores de dados"))
+                return
+            
+            # Validar que los dados sean válidos
+            try:
+                dado1 = int(dado1)
+                dado2 = int(dado2)
+                if not (1 <= dado1 <= 6 and 1 <= dado2 <= 6):
+                    raise ValueError("Valores fuera de rango")
+            except (ValueError, TypeError):
+                await self.enviar(websocket, proto.mensaje_error("Valores de dados inválidos"))
+                return
+            
+            info = self.game_manager.clientes.get(websocket)
+            if not info:
+                await self.enviar(websocket, proto.mensaje_error("Cliente no válido"))
+                return
+            
+            logger.info(f"🎲 Procesando tirada de {info['nombre']}: [{dado1}][{dado2}]")
+            
+            # Registrar la tirada
+            fase_completa, resultado = self.game_manager.registrar_tirada_determinacion(
+                websocket, dado1, dado2
+            )
+            
+            # Verificar si hubo error
+            if "error" in resultado:
+                await self.enviar(websocket, proto.mensaje_error(resultado["error"]))
+                return
+            
+            # Notificar a todos el resultado de esta tirada
+            suma = dado1 + dado2
+            await self.broadcast(proto.mensaje_determinacion_resultado(
+                info['nombre'],
+                info['color'],
+                dado1,
+                dado2,
+                suma
+            ))
+            
+            # Si la fase NO está completa, solo esperamos más tiradas
+            if not fase_completa:
+                if "pendientes" in resultado:
+                    logger.info(f"⏳ Esperando {resultado['pendientes']} jugadores más")
+                elif "empate" in resultado:
+                    # Hay empate, notificar desempate
+                    jugadores_empatados = resultado["jugadores"]
+                    valor_empate = resultado["valor"]
+                    
+                    logger.info(f"⚔️ Empate detectado: {valor_empate} puntos")
+                    logger.info(f"⚔️ Jugadores empatados: {[j['nombre'] for j in jugadores_empatados]}")
+                    
+                    await self.broadcast(proto.mensaje_determinacion_empate(
+                        jugadores_empatados,
+                        valor_empate
+                    ))
+                return
+            
+            # Fase completa: hay un ganador
+            if "ganador" in resultado and "orden" in resultado:
+                ganador = resultado["ganador"]
+                orden = resultado["orden"]
+                
+                logger.info(f"🏆 GANADOR: {ganador['nombre']} ({ganador['color']})")
+                logger.info(f"📋 ORDEN: {' -> '.join([j['nombre'] for j in orden])}")
+                
+                # Notificar ganador y orden
+                await self.broadcast(proto.mensaje_determinacion_ganador(
+                    ganador['nombre'],
+                    ganador['color'],
+                    orden
+                ))
+                
+                # Pequeña pausa para que los clientes procesen
+                await asyncio.sleep(1.0)
+                
+                # Ahora SÍ iniciar el juego normal
+                logger.info("🎮 Iniciando juego normal con orden determinado...")
+                await self.iniciar_juego()
+            
+        except Exception as e:
+            logger.error(f"Error procesando tirada de determinación: {e}", exc_info=True)
+            await self.enviar(websocket, proto.mensaje_error("Error procesando tirada"))
+    
+    # ============================================
+    # FIN MÉTODOS DE DETERMINACIÓN DE TURNOS
+    # ============================================
     
     async def iniciar_juego(self):
         """Inicia el juego"""
