@@ -148,23 +148,25 @@ def mensaje_sync_response(t1, t2, t3):
 # Mensajes para Determinación de Turnos
 # ============================================
 
-def mensaje_determinacion_inicio():
+def mensaje_determinacion_inicio(jugador_actual=""):
     """Servidor inicia la fase de determinación de turnos"""
     return crear_mensaje(MSG_DETERMINACION_INICIO, 
-                        mensaje="Todos los jugadores deben lanzar los dados una vez para determinar el orden")
+                        mensaje="Todos los jugadores deben lanzar los dados una vez para determinar el orden",
+                        jugador_actual=jugador_actual)
 
 def mensaje_determinacion_tirada(dado1, dado2):
     """Cliente envía su tirada durante la determinación"""
     return crear_mensaje(MSG_DETERMINACION_TIRADA, dado1=dado1, dado2=dado2)
 
-def mensaje_determinacion_resultado(nombre, color, dado1, dado2, suma):
+def mensaje_determinacion_resultado(nombre, color, dado1, dado2, suma, siguiente=""):
     """Servidor notifica el resultado de una tirada durante determinación"""
     return crear_mensaje(MSG_DETERMINACION_RESULTADO,
                         nombre=nombre,
                         color=color,
                         dado1=dado1,
                         dado2=dado2,
-                        suma=suma)
+                        suma=suma,
+                        siguiente=siguiente)
 
 def mensaje_determinacion_empate(jugadores_empatados, valor_empate):
     """Servidor notifica que hay un empate y quiénes deben volver a tirar"""

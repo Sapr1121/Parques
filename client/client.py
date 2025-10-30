@@ -589,13 +589,29 @@ mostrar_info_sincronizacion()
             self.ya_lance_en_determinacion = False
             self.estoy_en_desempate = False
             mensaje_texto = mensaje.get("mensaje", "Determinando orden de turnos...")
+            jugador_actual = mensaje.get("jugador_actual", "")
             
             print("\n" + "="*60)
             print("🎲 DETERMINACIÓN DE TURNOS 🎲".center(60))
             print("="*60)
             print(f"\n{mensaje_texto}")
-            print("\n💡 Lanza los dados para determinar quién empieza primero.")
+            print("\n💡 Los jugadores lanzarán los dados en orden para determinar quién empieza primero.")
             print("   El jugador con la suma más alta comenzará el juego.")
+            
+            # Si no hay jugador_actual, asignar al jugador con ID 0 (primer jugador)
+            if not jugador_actual and self.mi_id == 0:
+                jugador_actual = self.mi_nombre
+            
+            # Mostrar de quién es el turno
+            if jugador_actual == self.mi_nombre:
+                print("\n🎯 ES TU TURNO PARA LANZAR")
+                self.mi_turno_determinado = True
+            else:
+                # Si no hay jugador_actual, mostrar mensaje genérico
+                msg = f"\n⏳ Esperando a que {jugador_actual} lance los dados..." if jugador_actual else "\n⏳ Esperando turno..."
+                print(msg)
+                self.mi_turno_determinado = False
+            
             print("="*60 + "\n")
         
         elif tipo == proto.MSG_DETERMINACION_RESULTADO:
@@ -604,6 +620,7 @@ mostrar_info_sincronizacion()
             dado1 = mensaje.get("dado1")
             dado2 = mensaje.get("dado2")
             suma = mensaje.get("suma")
+            siguiente = mensaje.get("siguiente", "")
             
             es_mi_tirada = (color == self.mi_color)
             
@@ -612,6 +629,16 @@ mostrar_info_sincronizacion()
                 print(f"\n🎲 Tu tirada: [{dado1}] [{dado2}] = {suma}")
             else:
                 print(f"\n📊 {nombre} ({color}): [{dado1}] [{dado2}] = {suma}")
+            
+            # Si hay un siguiente jugador, actualizar los estados
+            if siguiente:
+                self.mi_turno_determinado = (siguiente == self.mi_nombre)
+                if self.mi_turno_determinado:
+                    print("\n🎯 ES TU TURNO PARA LANZAR")
+                    print("="*60 + "\n")
+                else:
+                    print(f"\n⏳ Esperando a que {siguiente} lance los dados...")
+                    print("="*60 + "\n")
         
         elif tipo == proto.MSG_DETERMINACION_EMPATE:
             jugadores = mensaje.get("jugadores", [])
@@ -1115,8 +1142,8 @@ mostrar_info_sincronizacion()
             while self.running and self.conectado and self.en_determinacion:
                 await self.procesar_mensajes()
                 
-                # Si ya lancé en esta ronda, solo esperar
-                if self.ya_lance_en_determinacion:
+                # Si no es mi turno o ya lancé, solo esperar
+                if not self.mi_turno_determinado or self.ya_lance_en_determinacion:
                     prompt_mostrado = False  # Resetear para la siguiente ronda
                     await asyncio.sleep(0.3)
                     continue

@@ -590,9 +590,17 @@ class ParchisServer:
                 await self.broadcast(proto.mensaje_error("No se pudo iniciar la determinación"))
                 return
             
+            # Determinar el primer jugador (ID 0)
+            primer_jugador = None
+            for ws, info in self.game_manager.clientes.items():
+                if info['id'] == 0:
+                    primer_jugador = info['nombre']
+                    break
+            
             # Notificar a todos los jugadores que deben lanzar dados
             logger.info("📢 Enviando MSG_DETERMINACION_INICIO a todos los jugadores")
-            await self.broadcast(proto.mensaje_determinacion_inicio())
+            logger.info(f"👤 Primer jugador: {primer_jugador}")
+            await self.broadcast(proto.mensaje_determinacion_inicio(primer_jugador))
             
             logger.info("✅ Fase de determinación iniciada correctamente")
             
@@ -639,12 +647,15 @@ class ParchisServer:
             
             # Notificar a todos el resultado de esta tirada
             suma = dado1 + dado2
+            siguiente_nombre = resultado.get("siguiente", "")
+            
             await self.broadcast(proto.mensaje_determinacion_resultado(
                 info['nombre'],
                 info['color'],
                 dado1,
                 dado2,
-                suma
+                suma,
+                siguiente_nombre
             ))
             
             # Si la fase NO está completa, solo esperamos más tiradas

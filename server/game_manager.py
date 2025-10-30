@@ -302,9 +302,30 @@ class GameManager:
             jugadores_que_tiraron = set(self.tiradas_determinacion.keys())
             
             if not jugadores_esperados.issubset(jugadores_que_tiraron):
-                # Aún faltan jugadores
+                # Aún faltan jugadores - determinar quién es el siguiente
                 pendientes = len(jugadores_esperados - jugadores_que_tiraron)
-                return False, {"pendientes": pendientes}
+                
+                # Obtener el siguiente jugador que NO ha tirado (por ID)
+                siguiente_ws = None
+                siguiente_nombre = ""
+                
+                # Ordenar clientes por ID para determinar el orden
+                clientes_ordenados = sorted(
+                    [(ws, self.clientes[ws]) for ws in jugadores_esperados],
+                    key=lambda x: x[1]['id']
+                )
+                
+                # Encontrar el primer jugador que no ha tirado
+                for ws, cliente_info in clientes_ordenados:
+                    if ws not in jugadores_que_tiraron:
+                        siguiente_ws = ws
+                        siguiente_nombre = cliente_info['nombre']
+                        break
+                
+                return False, {
+                    "pendientes": pendientes,
+                    "siguiente": siguiente_nombre
+                }
             
             # Todos han tirado, analizar resultados
             return self._analizar_resultados_determinacion()
