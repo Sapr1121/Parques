@@ -396,6 +396,20 @@ class ParchisServer:
                             accion="liberar_ficha"
                         ))
                     
+                    # ⭐ NUEVO: Notificar capturas si hubo
+                    if "capturas" in resultado and resultado["capturas"]:
+                        for captura in resultado["capturas"]:
+                            await self.broadcast(proto.crear_mensaje(
+                                proto.MSG_CAPTURA,
+                                capturado={
+                                    "nombre": captura["nombre"],
+                                    "color": captura["color"],
+                                    "ficha_id": captura["ficha_id"]
+                                }
+                            ))
+                            logger.info(f"🍽️ {nombre} ({color}) capturó ficha de "
+                                       f"{captura['nombre']} ({captura['color']}) al liberar todas las fichas")
+                    
                     await self.broadcast(proto.mensaje_tablero(self.game_manager.obtener_estado_tablero()))
                     
                     if self.game_manager.debe_avanzar_turno_ahora():
@@ -509,8 +523,7 @@ class ParchisServer:
         
         info = self.game_manager.clientes[websocket]
         color = info["color"]
-        indice_color = proto.COLORES.index(color)
-        salida = self.game_manager.tablero.salidas[indice_color]
+        salida = self.game_manager.tablero.salidas[color]  # Usar diccionario directo
         
         await self.broadcast(proto.crear_mensaje(
             proto.MSG_MOVIMIENTO_OK,
@@ -520,6 +533,20 @@ class ParchisServer:
             desde=-1,
             hasta=salida
         ))
+        
+        # ⭐ NUEVO: Notificar capturas si hubo
+        if "capturas" in resultado and resultado["capturas"]:
+            for captura in resultado["capturas"]:
+                await self.broadcast(proto.crear_mensaje(
+                    proto.MSG_CAPTURA,
+                    capturado={
+                        "nombre": captura["nombre"],
+                        "color": captura["color"],
+                        "ficha_id": captura["ficha_id"]
+                    }
+                ))
+                logger.info(f"🍽️ {info['nombre']} ({color}) capturó ficha de "
+                           f"{captura['nombre']} ({captura['color']}) al salir de cárcel")
         
         logger.info(f"{info['nombre']} sacó ficha de la cárcel")
         await self.broadcast_tablero()
@@ -555,6 +582,20 @@ class ParchisServer:
             desde=resultado["desde"],
             hasta=resultado["hasta"]
         ))
+        
+        # ⭐ NUEVO: Notificar capturas si hubo
+        if "capturas" in resultado and resultado["capturas"]:
+            for captura in resultado["capturas"]:
+                await self.broadcast(proto.crear_mensaje(
+                    proto.MSG_CAPTURA,
+                    capturado={
+                        "nombre": captura["nombre"],
+                        "color": captura["color"],
+                        "ficha_id": captura["ficha_id"]
+                    }
+                ))
+                logger.info(f"🍽️ {info['nombre']} ({info['color']}) capturó ficha de "
+                           f"{captura['nombre']} ({captura['color']})")
         
         logger.info(f"🎮 {info['nombre']} movió ficha {ficha_id}")
         await self.broadcast_tablero()

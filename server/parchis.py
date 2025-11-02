@@ -143,6 +143,42 @@ class Table:
             casillas_hasta_meta = (68 - ficha.posicion) + seguro_meta
         
         return casillas_hasta_meta <= 7
+    
+    def puede_capturar_en_casilla(self, casilla, color_atacante):
+        """
+        Determina si un color puede capturar fichas en una casilla específica.
+        
+        Reglas:
+        - No se puede capturar en casillas seguras (self.save)
+        - No se puede capturar en casillas seguras de meta (self.seguro_meta)
+        - En casillas de salida (self.salidas), solo el color dueño puede capturar
+        
+        Args:
+            casilla: índice de la casilla (0-indexed)
+            color_atacante: color de la ficha que llega
+            
+        Returns:
+            True si puede capturar, False si no
+        """
+        # Verificar si es casilla segura normal
+        # self.save contiene índices 1-indexed, así que restamos 1
+        casillas_seguras_indices = [s - 1 for s in self.save]
+        if casilla in casillas_seguras_indices:
+            return False
+        
+        # Verificar si es casilla segura de meta
+        # self.seguro_meta contiene índices 0-indexed
+        if casilla in self.seguro_meta.values():
+            return False
+        
+        # Verificar si es casilla de salida
+        for color, indice_salida in self.salidas.items():
+            if casilla == indice_salida:
+                # Solo el color dueño de la salida puede capturar ahí
+                return color == color_atacante
+        
+        # Casilla normal, se puede capturar
+        return True
 
 
 if __name__ == "__main__":

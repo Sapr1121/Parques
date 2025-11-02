@@ -3,6 +3,9 @@ import websockets
 import json
 import time
 import protocol as proto
+import logging
+# Desactivar logs de websockets
+logging.getLogger('websockets').setLevel(logging.ERROR)  # o logging.WARNING
 
 class ParchisClient:
     def __init__(self, servidor_ip, servidor_puerto):
@@ -76,7 +79,6 @@ obtener_tiempo_sincronizado()
 mostrar_info_sincronizacion()
     """
 
-           
     async def sincronizar_reloj(self, rondas=5):
 
         print("\n" + "="*60)
@@ -152,7 +154,7 @@ mostrar_info_sincronizacion()
         print("="*60 + "\n")
     
         return True
-
+    
     async def _esperar_sync_response(self, timeout=2.0):
 
         tiempo_inicio = time.time()

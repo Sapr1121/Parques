@@ -614,6 +614,7 @@ class GameManager:
             # Usar el nuevo sistema de salidas
             salida = self.tablero.salidas[color]  # Ahora es un diccionario
             fichas_liberadas = []
+            capturas_todas = []  # Lista para acumular todas las capturas
             
             for ficha in fichas_bloqueadas:
                 ficha.estado = proto.ESTADO_EN_JUEGO
@@ -621,11 +622,21 @@ class GameManager:
                 ficha_id = getattr(ficha, 'id', 0)
                 fichas_liberadas.append(ficha_id)
                 logger.info(f"🔓 Ficha {ficha_id} de {color} liberada automáticamente a posición {salida}")
+                
+                # ⭐ NUEVO: Ejecutar capturas para cada ficha liberada
+                fichas_capturadas = self.ejecutar_capturas(salida, color, jugador)
+                capturas_todas.extend(fichas_capturadas)
             
             # ⭐ Marcar acción realizada
             self.accion_realizada = True
             
-            return True, {"fichas_liberadas": fichas_liberadas, "posicion": salida}
+            resultado = {"fichas_liberadas": fichas_liberadas, "posicion": salida}
+            
+            # Agregar información de capturas si hubo
+            if capturas_todas:
+                resultado["capturas"] = capturas_todas
+            
+            return True, resultado
     
     def sacar_de_carcel(self, socket_cliente):
         """Saca UNA ficha de la cárcel cuando sale doble"""
@@ -666,10 +677,19 @@ class GameManager:
             ficha_id = getattr(ficha, 'id', 0)
             logger.info(f"🔓 Ficha {ficha_id} de {color} liberada a posición {salida}")
             
+            # ⭐ NUEVO: Ejecutar capturas al salir de la cárcel
+            fichas_capturadas = self.ejecutar_capturas(salida, color, jugador)
+            
             # Marcar acción realizada
             self.accion_realizada = True
             
-            return True, {"ficha_id": ficha_id, "posicion": salida}
+            resultado = {"ficha_id": ficha_id, "posicion": salida}
+            
+            # Agregar información de capturas si hubo
+            if fichas_capturadas:
+                resultado["capturas"] = fichas_capturadas
+            
+            return True, resultado
     
     def mover_ficha(self, socket_cliente, ficha_id, dado_elegido):
         """
@@ -761,14 +781,29 @@ class GameManager:
                     self.dados_usados.append(dado_elegido)
                     logger.debug(f"Dado {dado_elegido} registrado como usado. Dados usados: {self.dados_usados}")
                 
+                # ⭐ NUEVO: Ejecutar capturas si la ficha está EN_JUEGO
+                fichas_capturadas = []
+                if ficha.estado == proto.ESTADO_EN_JUEGO:
+                    fichas_capturadas = self.ejecutar_capturas(
+                        ficha.posicion, 
+                        jugador.color,
+                        jugador
+                    )
+                
                 # Verificar victoria si llegó a meta
                 if ficha.estado == "META":
                     self.verificar_victoria(socket_cliente)
                 
-                return True, {
+                resultado = {
                     "desde": posicion_anterior,
                     "hasta": ficha.posicion
                 }
+                
+                # Agregar información de capturas si hubo
+                if fichas_capturadas:
+                    resultado["capturas"] = fichas_capturadas
+                
+                return True, resultado
             
             return False, "Movimiento inválido"
     
@@ -910,3 +945,83 @@ class GameManager:
     def esta_cerca_de_meta(self, ficha):
         """Verifica si una ficha está cerca de su meta"""
         return self.tablero.esta_cerca_meta(ficha)
+    
+    def obtener_fichas_en_casilla(self, casilla, excluir_color=None):
+        """
+        Obtiene todas las fichas presentes en una casilla específica.
+        
+        Args:
+            casilla: índice de la casilla (0-indexed)
+            excluir_color: color a excluir de la búsqueda (opcional)
+            
+        Returns:
+            Lista de diccionarios con información de las fichas encontradas:
+            [{'jugador': User, 'ficha': gameToken, 'ficha_id': int}, ...]
+        """
+        fichas_encontradas = []
+        
+        for jugador in self.jugadores:
+            # Si se especifica un color a excluir y este jugador es de ese color, saltar
+            if excluir_color and jugador.color == excluir_color:
+                continue
+            
+            # Buscar fichas de este jugador en la casilla
+            for idx, ficha in enumerate(jugador.fichas):
+                # Solo considerar fichas en juego
+                if ficha.estado == proto.ESTADO_EN_JUEGO and ficha.posicion == casilla:
+                    fichas_encontradas.append({
+                        'jugador': jugador,
+                        'ficha': ficha,
+                        'ficha_id': idx
+                    })
+        
+        return fichas_encontradas
+    
+    def ejecutar_capturas(self, casilla_destino, color_atacante, jugador_atacante):
+        """
+        Ejecuta las capturas en una casilla específica.
+        
+        Args:
+            casilla_destino: índice de la casilla donde se produjo el movimiento
+            color_atacante: color de la ficha que llegó
+            jugador_atacante: objeto User del jugador atacante
+            
+        Returns:
+            Lista de fichas capturadas: [{'nombre': str, 'color': str, 'ficha_id': int}, ...]
+        """
+        fichas_capturadas = []
+        
+        with self.lock:
+            # Verificar si se puede capturar en esta casilla
+            if not self.tablero.puede_capturar_en_casilla(casilla_destino, color_atacante):
+                logger.debug(f"No se puede capturar en casilla {casilla_destino} con color {color_atacante}")
+                return fichas_capturadas
+            
+            # Obtener fichas enemigas en la casilla
+            fichas_en_casilla = self.obtener_fichas_en_casilla(casilla_destino, excluir_color=color_atacante)
+            
+            if not fichas_en_casilla:
+                logger.debug(f"No hay fichas enemigas en casilla {casilla_destino}")
+                return fichas_capturadas
+            
+            # Capturar cada ficha enemiga
+            for ficha_info in fichas_en_casilla:
+                jugador_victima = ficha_info['jugador']
+                ficha_victima = ficha_info['ficha']
+                ficha_id = ficha_info['ficha_id']
+                
+                # Enviar ficha a la cárcel
+                ficha_victima.estado = proto.ESTADO_BLOQUEADO
+                ficha_victima.posicion = -1
+                
+                # Registrar captura
+                fichas_capturadas.append({
+                    'nombre': jugador_victima.name,
+                    'color': jugador_victima.color,
+                    'ficha_id': ficha_id
+                })
+                
+                logger.info(f"🍽️ CAPTURA: {color_atacante} capturó ficha de {jugador_victima.color} "
+                           f"(ID: {ficha_id}) en casilla {casilla_destino}")
+            
+            return fichas_capturadas
