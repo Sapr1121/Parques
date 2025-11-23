@@ -1,12 +1,8 @@
-import './App.css'
-import Board from './components/Board/Board';
+
+import AppRoutes from './AppRoutes';
 
 function App() {
-  return (
-    <div>
-      <Board />
-    </div>
-  );
+  return <AppRoutes />;
 }
 
 export default App;
