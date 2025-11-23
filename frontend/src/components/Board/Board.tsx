@@ -12,24 +12,45 @@ const colors = {
   amarillo: '#E8E300'
 };
 
-const Casilla = ({ num, bgColor = 'white', safe = false }: { num: number; bgColor?: string; safe?: boolean }) => (
-  <div 
-    className="w-full h-full border border-gray-800 flex items-center justify-center text-xs sm:text-sm font-bold relative"
-    style={{ backgroundColor: bgColor }}
-  >
-    {num}
-    {safe && (
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-700 rounded-full bg-transparent"></div>
-      </div>
-    )}
-  </div>
-);
+const Casilla = ({ num, bgColor = 'white', safe = false, corner = '' }: { num: number; bgColor?: string; safe?: boolean; corner?: string }) => {
+  const getClipPath = () => {
+    switch(corner) {
+      case 'top-left': return 'polygon(30% 0, 100% 0, 100% 100%, 0 100%, 0 30%)';
+      case 'top-right': return 'polygon(0 0, 70% 0, 100% 30%, 100% 100%, 0 100%)';
+      case 'bottom-left': return 'polygon(0 0, 100% 0, 100% 100%, 0 70%, 0 0)';
+      case 'bottom-right': return 'polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)';
+      default: return 'none';
+    }
+  };
+
+  return (
+    <div 
+      className="w-full h-full border-2 border-gray-800 flex items-center justify-center text-base sm:text-lg md:text-xl font-bold relative"
+      style={{ 
+        backgroundColor: bgColor,
+        clipPath: getClipPath(),
+        minWidth: '80px',
+        minHeight: '80px'
+      }}
+    >
+      {num}
+      {safe && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-gray-700 rounded-full bg-transparent"></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Meta = ({ color }: { color: string }) => (
   <div 
-    className="w-full h-full border border-gray-800"
-    style={{ backgroundColor: color }}
+    className="w-full h-full border-2 border-gray-800"
+    style={{ 
+      backgroundColor: color,
+      minWidth: '80px',
+      minHeight: '80px'
+    }}
   />
 );
 
@@ -47,18 +68,19 @@ const Centro = () => (
 
 const Board: React.FC = () => {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-2 sm:p-4">
-      <div className="bg-white p-2 sm:p-4 rounded-xl shadow-2xl w-full max-w-[95vmin] sm:max-w-[90vmin]">
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-1 overflow-auto">
+      <div className="bg-white p-2 rounded-xl shadow-2xl">
         
         <div className="grid gap-0" style={{ 
-          gridTemplateColumns: 'repeat(19, 1fr)',
-          gridTemplateRows: 'repeat(19, 1fr)',
+          gridTemplateColumns: 'repeat(19, minmax(50px, 1fr))',
+          gridTemplateRows: 'repeat(19, minmax(50px, 1fr))',
           aspectRatio: '1/1',
-          width: '100%'
+          minWidth: '950px',
+          minHeight: '950px'
         }}>
           
           {/* ========== CARCEL ROJA (5x5) ========== */}
-          <div style={{gridRow: '2/7', gridColumn: '2/7'}}><Carcel img={RedJeil} /></div>
+          <div style={{gridRow: '2/8', gridColumn: '2/8'}}><Carcel img={RedJeil} /></div>
           
           {/* ========== BRAZO SUPERIOR (ROJO) ========== */}
           {/* Fila 1 */}
@@ -97,16 +119,16 @@ const Board: React.FC = () => {
           <div style={{gridRow: '7', gridColumn: '11'}}><Casilla num={27} /></div>
           
           {/* Fila 8 */}
-          <div style={{gridRow: '8', gridColumn: '9'}}><Casilla num={42} /></div>
+          <div style={{gridRow: '8', gridColumn: '9'}}><Casilla num={42} corner="bottom-left" /></div>
           <div style={{gridRow: '8', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
-          <div style={{gridRow: '8', gridColumn: '11'}}><Casilla num={26} /></div>
+          <div style={{gridRow: '8', gridColumn: '11'}}><Casilla num={26} corner="bottom-right" /></div>
           
           {/* ========== CARCEL AZUL (5x5) ========== */}
-          <div style={{gridRow: '2/7', gridColumn: '13/18'}}><Carcel img={BlueJeil} /></div>
+          <div style={{gridRow: '2/8', gridColumn: '14/20'}}><Carcel img={BlueJeil} /></div>
           
           {/* ========== BRAZO IZQUIERDO (VERDE) ========== */}
           {/* Columna superior */}
-          <div style={{gridRow: '9', gridColumn: '8'}}><Casilla num={43} /></div>
+          <div style={{gridRow: '9', gridColumn: '8'}}><Casilla num={43} corner="top-right" /></div>
           <div style={{gridRow: '9', gridColumn: '7'}}><Casilla num={44} /></div>
           <div style={{gridRow: '9', gridColumn: '6'}}><Casilla num={45} /></div>
           <div style={{gridRow: '9', gridColumn: '5'}}><Casilla num={46} bgColor={colors.verde} /></div>
@@ -125,7 +147,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '10', gridColumn: '2'}}><Meta color={colors.verde} /></div>
           <div style={{gridRow: '10', gridColumn: '1'}}><Casilla num={51} /></div>  
           {/* Columna inferior */}
-          <div style={{gridRow: '11', gridColumn: '8'}}><Casilla num={59} /></div>
+          <div style={{gridRow: '11', gridColumn: '8'}}><Casilla num={59} corner="bottom-right" /></div>
           <div style={{gridRow: '11', gridColumn: '7'}}><Casilla num={58} /></div>
           <div style={{gridRow: '11', gridColumn: '6'}}><Casilla num={57} /></div>
           <div style={{gridRow: '11', gridColumn: '5'}}><Casilla num={56} bgColor={colors.verde} /></div>
@@ -139,7 +161,7 @@ const Board: React.FC = () => {
           
           {/* ========== BRAZO DERECHO (AZUL) ========== */}
           {/* Columna superior */}
-          <div style={{gridRow: '9', gridColumn: '12'}}><Casilla num={25} /></div>
+          <div style={{gridRow: '9', gridColumn: '12'}}><Casilla num={25} corner="top-left" /></div>
           <div style={{gridRow: '9', gridColumn: '13'}}><Casilla num={24} /></div>
           <div style={{gridRow: '9', gridColumn: '14'}}><Casilla num={23} /></div>
           <div style={{gridRow: '9', gridColumn: '15'}}><Casilla num={22} bgColor={colors.azul} /></div>
@@ -159,7 +181,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '10', gridColumn: '19'}}><Casilla num={17} /></div> 
 
           {/* Columna inferior */}
-          <div style={{gridRow: '11', gridColumn: '12'}}><Casilla num={9} /></div>
+          <div style={{gridRow: '11', gridColumn: '12'}}><Casilla num={9} corner="bottom-left" /></div>
           <div style={{gridRow: '11', gridColumn: '13'}}><Casilla num={10} /></div>
           <div style={{gridRow: '11', gridColumn: '14'}}><Casilla num={11} /></div>
           <div style={{gridRow: '11', gridColumn: '15'}}><Casilla num={12} bgColor={colors.azul} /></div>
@@ -169,13 +191,13 @@ const Board: React.FC = () => {
           <div style={{gridRow: '11', gridColumn: '19'}}><Casilla num={16} /></div>  
 
           {/* ========== CARCEL VERDE (5x5) ========== */}
-          <div style={{gridRow: '13/18', gridColumn: '2/7'}}><Carcel img={GreenJeil} /></div>
+          <div style={{gridRow: '13/19', gridColumn: '2/8'}}><Carcel img={GreenJeil} /></div>
           
           {/* ========== BRAZO INFERIOR (AMARILLO) ========== */}
           {/* Fila 12 */}
-          <div style={{gridRow: '12', gridColumn: '9'}}><Casilla num={60} /></div>
+          <div style={{gridRow: '12', gridColumn: '9'}}><Casilla num={60} corner="top-right" /></div>
           <div style={{gridRow: '12', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
-          <div style={{gridRow: '12', gridColumn: '11'}}><Casilla num={8} /></div>
+          <div style={{gridRow: '12', gridColumn: '11'}}><Casilla num={8} corner="top-left" /></div>
 
           {/* Fila 13 */}
           <div style={{gridRow: '13', gridColumn: '9'}}><Casilla num={61} /></div>
@@ -213,7 +235,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '19', gridColumn: '11'}}><Casilla num={1} /></div>
 
           {/* ========== CARCEL AMARILLA (5x5) ========== */}
-          <div style={{gridRow: '13/18', gridColumn: '13/18'}}><Carcel img={YellowJeil} /></div>
+          <div style={{gridRow: '13/19', gridColumn: '14/20'}}><Carcel img={YellowJeil} /></div>
           
         </div>
       </div>
