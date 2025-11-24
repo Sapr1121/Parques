@@ -18,9 +18,29 @@ export const useCreateRoom = () => {
       setRoomCode(response.code);
       setRoomPort(response.port);
 
-      // 2. Conectar WebSocket al servidor Python
-      await connect(playerName, playerColor);
+      // 2. Esperar a que los servidores Python se inicien
+      console.log('⏳ Esperando a que el servidor se inicie...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
+      // 3. Conectar WebSocket al servidor Python con reintentos
+      let retries = 3;
+      let connected = false;
+      while (retries > 0 && !connected) {
+        try {
+          console.log(`🔌 Intentando conectar... (intentos restantes: ${retries})`);
+          await connect(playerName, playerColor);
+          connected = true;
+          console.log('✅ Conectado al servidor');
+        } catch {
+          retries--;
+          if (retries > 0) {
+            console.log('⏳ Reintentando en 2 segundos...');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            throw new Error('No se pudo conectar al servidor después de varios intentos');
+          }
+        }
+      }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Error creando sala';
       setError(errorMessage);

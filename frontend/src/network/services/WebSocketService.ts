@@ -11,37 +11,44 @@ class WebSocketService {
     this.url = url;
   }
 
-  connect(playerName: string, playerColor?: string) {
-    if (this.socket?.readyState === WebSocket.OPEN) return;
-
-    this.socket = new WebSocket(this.url);
-
-    this.socket.onopen = () => {
-      const msg = {
-        tipo: "CONECTAR",
-        nombre: playerName,
-        ...(playerColor && { color: playerColor }),
-      };
-      this.send(msg);
-      this.emit("open", null);
-    };
-
-    this.socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        this.emit("message", data);
-      } catch (err) {
-        this.emit("error", "Mensaje inválido del servidor");
+  connect(playerName: string, playerColor?: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        resolve();
+        return;
       }
-    };
 
-    this.socket.onerror = (err) => {
-      this.emit("error", "Error de conexión WebSocket");
-    };
+      this.socket = new WebSocket(this.url);
 
-    this.socket.onclose = () => {
-      this.emit("close", "Conexión cerrada");
-    };
+      this.socket.onopen = () => {
+        const msg = {
+          tipo: "CONECTAR",
+          nombre: playerName,
+          ...(playerColor && { color: playerColor }),
+        };
+        this.send(msg);
+        this.emit("open", null);
+        resolve();
+      };
+
+      this.socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit("message", data);
+        } catch (err) {
+          this.emit("error", "Mensaje inválido del servidor");
+        }
+      };
+
+      this.socket.onerror = () => {
+        this.emit("error", "Error de conexión WebSocket");
+        reject(new Error("Error de conexión WebSocket"));
+      };
+
+      this.socket.onclose = () => {
+        this.emit("close", "Conexión cerrada");
+      };
+    });
   }
 
   send(msg: BaseMessage) {

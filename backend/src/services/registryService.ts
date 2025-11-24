@@ -14,33 +14,43 @@ export async function registerRoom(
   hostName: string,
   ip: string = '127.0.0.1',
 ): Promise<RegistryResponse> {
+  console.log(`📝 [REGISTRY] Intentando registrar sala: ${code}`);
+  console.log(`   - Host: ${REGISTRY_HOST}:${REGISTRY_PORT}`);
+  console.log(`   - Sala: ${code} | IP: ${ip} | Puerto: ${port} | Jugador: ${hostName}`);
+  
   return new Promise((resolve, reject) => {
     const client = new net.Socket();
     let responseData = '';
 
     client.connect(REGISTRY_PORT, REGISTRY_HOST, () => {
       const registerMessage = `REGISTER|${code}|${ip}|${port}|${hostName}\n`;
+      console.log(`📤 [REGISTRY] Enviando: ${registerMessage.trim()}`);
       client.write(registerMessage);
     });
 
     client.on('data', (data) => {
       responseData += data.toString();
+      console.log(`📥 [REGISTRY] Respuesta recibida: ${responseData}`);
       if (responseData.includes('\n')) {
         client.end();
         const response = responseData.trim();
         if (response.startsWith('OK')) {
+          console.log(`✅ [REGISTRY] Registro exitoso: ${response}`);
           resolve({ success: true, message: response });
         } else {
+          console.log(`⚠️ [REGISTRY] Registro falló: ${response}`);
           resolve({ success: false, message: response });
         }
       }
     });
 
     client.on('error', (err) => {
+      console.error(`❌ [REGISTRY] Error de conexión: ${err.message}`);
       reject(new Error(`Error conectando al registro: ${err.message}`));
     });
 
     client.on('timeout', () => {
+      console.error(`⏱️ [REGISTRY] Timeout esperando respuesta`);
       client.destroy();
       reject(new Error('Timeout conectando al registro'));
     });

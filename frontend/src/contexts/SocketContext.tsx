@@ -7,7 +7,7 @@ interface SocketCtx {
   connected: boolean;
   lastMessage: any;
   error: string | null;
-  connect: (name: string, color?: string) => void;
+  connect: (name: string, color?: string) => Promise<void>;
   send: (msg: BaseMessage) => void;
 }
 
@@ -23,19 +23,25 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // una única instancia para toda la app
   const service = useRef<WebSocketService | null>(null);
 
+  const connect = async (name: string, color?: string) => {
+    // Crear el servicio solo cuando se conecta por primera vez
+    if (!service.current) {
+      service.current = new WebSocketService(import.meta.env.VITE_WS_URL || 'ws://localhost:8001');
+      
+      service.current.on('open', () => setConnected(true));
+      service.current.on('close', () => setConnected(false));
+      service.current.on('message', (m) => setLastMessage(m));
+      service.current.on('error', (e) => setError(e));
+    }
+    
+    await service.current.connect(name, color);
+  };
+  
+  const send = (msg: BaseMessage) => service.current?.send(msg);
+
   useEffect(() => {
-    service.current = new WebSocketService(import.meta.env.VITE_WS_URL || 'ws://localhost:8001');
-
-    service.current.on('open',    () => setConnected(true));
-    service.current.on('close',   () => setConnected(false));
-    service.current.on('message', (m) => setLastMessage(m));
-    service.current.on('error',   (e) => setError(e));
-
     return () => service.current?.disconnect();
   }, []);
-
-  const connect = (name: string, color?: string) => service.current?.connect(name, color);
-  const send    = (msg: BaseMessage) => service.current?.send(msg);
 
   return (
     <SocketContext.Provider value={{ connected, lastMessage, error, connect, send }}>
