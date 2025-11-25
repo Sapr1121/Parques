@@ -9,15 +9,24 @@ const DeterminarTurno: React.FC = () => {
   const location = useLocation();
   const { lastMessage } = useSocket();
   // Recibe jugadores y miId desde el lobby por location.state
-  const { players, myId } = location.state || {};
+  const { players, myId, playerInfo } = location.state || {};
   const [ordenFinal, setOrdenFinal] = useState<Player[] | null>(null);
 
   useEffect(() => {
     if (ordenFinal) {
-      // Navegar al tablero y pasar el orden de turnos
-      navigate('/board', { state: { turnOrder: ordenFinal } });
+      // Navegar al tablero de juego y pasar la info del jugador y el orden de turnos
+      navigate('/game', { 
+        state: { 
+          turnOrder: ordenFinal,
+          playerInfo: playerInfo || {
+            id: myId,
+            nombre: players?.find((p: Player) => p.id === myId)?.name,
+            color: players?.find((p: Player) => p.id === myId)?.color
+          }
+        } 
+      });
     }
-  }, [ordenFinal, navigate]);
+  }, [ordenFinal, navigate, playerInfo, myId, players]);
 
   if (!players || myId === undefined) {
     return <div className="p-8 text-center text-red-600 font-bold">Error: No hay datos de jugadores.</div>;

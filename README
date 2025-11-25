@@ -1,0 +1,18 @@
+comandos a ejecutar
+
+Importante! Ejecutar 
+npm install
+
+y para correr cada proyecto, importante,
+dirigirse a cada carpeta correspondiente
+
+por ejemplo 
+
+en la carpeta frontend y en la carpeta backend
+
+en cada carpeta individualmente ejecutar el
+comando
+
+npm run dev
+
+

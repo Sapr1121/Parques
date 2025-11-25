@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef } from 'react';
+import { createContext, useContext, useState, useRef, useCallback } from 'react';
 import WebSocketService from "../network/services/WebSocketService";
 import type { BaseMessage } from '../network/types/messages';
 
@@ -6,10 +6,12 @@ import type { BaseMessage } from '../network/types/messages';
 interface SocketCtx {
   connected: boolean;
   lastMessage: any;
+  messageQueue: any[];
   error: string | null;
   connect: (name: string, color?: string, wsUrl?: string) => Promise<void>;
   send: (msg: BaseMessage) => void;
   disconnect: () => void;
+  clearQueue: () => void;
 }
 
 /* --------------  CONTEXT  -------------- */
@@ -19,11 +21,16 @@ const SocketContext = createContext<SocketCtx | undefined>(undefined);
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<any>(null);
+  const [messageQueue, setMessageQueue] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // una única instancia para toda la app
   const service = useRef<WebSocketService | null>(null);
   const currentUrl = useRef<string>('');
+
+  const clearQueue = useCallback(() => {
+    setMessageQueue([]);
+  }, []);
 
   const connect = async (name: string, color?: string, wsUrl?: string) => {
     const url = wsUrl || import.meta.env.VITE_WS_URL || 'ws://localhost:8001';
@@ -51,7 +58,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
       service.current.on('message', (m) => {
         console.log('📩 Mensaje recibido:', m);
-        setLastMessage(m);
+        // Agregar timestamp único para forzar re-render
+        const messageWithId = { ...m, _timestamp: Date.now(), _id: Math.random() };
+        setLastMessage(messageWithId);
+        // También agregar a la cola para mensajes importantes
+        if (['TABLERO', 'MOVIMIENTO_OK', 'TURNO', 'DADOS'].includes(m.tipo)) {
+          setMessageQueue(prev => [...prev, messageWithId]);
+        }
       });
       service.current.on('error', (e) => setError(e));
     }
@@ -72,7 +85,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // El socket debe mantenerse vivo durante toda la sesión de juego
 
   return (
-    <SocketContext.Provider value={{ connected, lastMessage, error, connect, send, disconnect }}>
+    <SocketContext.Provider value={{ connected, lastMessage, messageQueue, error, connect, send, disconnect, clearQueue }}>
       {children}
     </SocketContext.Provider>
   );

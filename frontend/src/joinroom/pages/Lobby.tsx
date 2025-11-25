@@ -137,7 +137,21 @@ const Lobby = () => {
       if (typeof miId === 'number') {
         console.log('🚀 Navegando a determinar-turno con miId:', miId, 'jugadores:', jugadoresTurno);
         pendingTurnDetermination.current = false;
-        navigate('/determinar-turno', { state: { players: jugadoresTurno, myId: miId } });
+        
+        // Construir playerInfo para pasar al juego
+        const playerInfo = miInfo ? {
+          id: miId,
+          nombre: miInfo.nombre,
+          color: miInfo.color
+        } : null;
+        
+        navigate('/determinar-turno', { 
+          state: { 
+            players: jugadoresTurno, 
+            myId: miId,
+            playerInfo: playerInfo
+          } 
+        });
       }
     }
   }, [lastMessage, jugadores, miInfo, esAdmin, navigate]);
