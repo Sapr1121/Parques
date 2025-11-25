@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSocket } from "../../contexts/SocketContext";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface Jugador {
   nombre: string;
@@ -18,8 +18,18 @@ const Lobby = () => {
   const [esAdmin, setEsAdmin] = useState(location.state?.isAdmin ?? true);
   const [roomCode] = useState(location.state?.roomCode || "");
   const [mensaje, setMensaje] = useState("");
-  const [miInfo, setMiInfo] = useState<Jugador | null>(null);
+  // Obtener miInfo del state si viene (para el admin que crea la sala)
+  const [miInfo, setMiInfo] = useState<Jugador | null>(() => {
+    const state = location.state as any;
+    if (state?.playerName && state?.playerColor) {
+      return { nombre: state.playerName, color: state.playerColor };
+    }
+    return null;
+  });
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
+  // Flag para saber si se recibió DETERMINACION_INICIO
+  const pendingTurnDetermination = useRef(false);
 
   // Copiar código de sala
   const handleCopy = () => {
@@ -40,7 +50,6 @@ const Lobby = () => {
         color: lastMessage.color
       };
       setMiInfo(nuevoJugador);
-      // Agregar a la lista si no existe
       setJugadores(prev => {
         if (!prev.find(j => j.nombre === nuevoJugador.nombre)) {
           return [...prev, nuevoJugador];
@@ -53,7 +62,6 @@ const Lobby = () => {
     if (lastMessage.tipo === "ESPERANDO") {
       setConectados(lastMessage.conectados || 0);
       setRequeridos(lastMessage.requeridos || 2);
-      // Si viene con lista de jugadores, usarla
       if (Array.isArray(lastMessage.jugadores)) {
         setJugadores(lastMessage.jugadores);
       }
@@ -92,7 +100,47 @@ const Lobby = () => {
     if (lastMessage.tipo === "JUGADOR_DESCONECTADO") {
       setJugadores(prev => prev.filter(j => j.nombre !== lastMessage.nombre));
     }
-  }, [lastMessage]);
+
+    // Si recibimos DETERMINACION_INICIO, marcamos el flag
+    if (lastMessage.tipo === "DETERMINACION_INICIO") {
+      console.log('🎲 Recibido DETERMINACION_INICIO, jugador_actual:', lastMessage.jugador_actual);
+      pendingTurnDetermination.current = true;
+    }
+    
+    // Si el flag está activo, navegamos
+    if (pendingTurnDetermination.current) {
+      // Construir lista de jugadores - usar jugadores si existe, sino crear desde miInfo
+      let listaJugadores = jugadores.length > 0 ? jugadores : (miInfo ? [miInfo] : []);
+      
+      if (listaJugadores.length === 0) {
+        console.log('⏳ Esperando lista de jugadores...');
+        return;
+      }
+      
+      const jugadoresTurno = listaJugadores.map((j, idx) => ({
+        id: idx,
+        name: j.nombre,
+        color: j.color
+      }));
+      
+      // Intentar obtener miId de miInfo
+      let miId: number | undefined;
+      if (miInfo) {
+        miId = jugadoresTurno.find(j => j.name === miInfo.nombre)?.id;
+      }
+      
+      // Si aún no tenemos miId y somos admin, usamos el primer jugador
+      if (miId === undefined && esAdmin && jugadoresTurno.length > 0) {
+        miId = 0; // El admin suele ser el primer jugador
+      }
+      
+      if (typeof miId === 'number') {
+        console.log('🚀 Navegando a determinar-turno con miId:', miId, 'jugadores:', jugadoresTurno);
+        pendingTurnDetermination.current = false;
+        navigate('/determinar-turno', { state: { players: jugadoresTurno, myId: miId } });
+      }
+    }
+  }, [lastMessage, jugadores, miInfo, esAdmin, navigate]);
 
   // Botón solo visible si eres admin y hay suficientes jugadores
   const puedeIniciar = esAdmin && conectados >= 2 && conectados <= 4;

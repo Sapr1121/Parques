@@ -18,7 +18,7 @@ export const CreateRoom: React.FC = () => {
   // Navegar al lobby cuando la conexión esté establecida
   const handleGoToLobby = () => {
     if (roomCode && connected) {
-      navigate('/lobby', { state: { isAdmin: true, roomCode } });
+      navigate('/lobby', { state: { isAdmin: true, roomCode, playerName: name.trim(), playerColor: color } });
     }
   };
 

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Board from './board/Board';
+import DeterminarTurno from './board/pages/DeterminarTurno';
 import MainMenu from './Mainlobby/MainMenu';
 import { NetworkTest } from "./network/components/test"; 
 import { CreateRoom } from './createroom/pages/lobby';
@@ -15,6 +16,7 @@ const AppRoutes = () => (
       <Route path="/create-room" element={<CreateRoom />} />
       <Route path="/join-room" element={<JoinRoom />} />
       <Route path="/lobby" element={<Lobby />} />
+      <Route path="/determinar-turno" element={<DeterminarTurno />} />
     </Routes>
   </BrowserRouter>
 );

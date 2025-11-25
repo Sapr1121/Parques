@@ -28,7 +28,8 @@ const JoinRoom: React.FC = () => {
   const handleJoin = (code: string, color: string, name: string) => {
     setModalOpen(false);
     console.log('✅ Unido a la sala, navegando al lobby...');
-    navigate('/lobby', { state: { isAdmin: false } });
+    // Navega pasando el código de sala y el estado de admin
+    navigate('/lobby', { state: { isAdmin: false, roomCode: code } });
   };
 
   return (

@@ -12,9 +12,15 @@ export const useCreateRoom = () => {
   const create = async (playerName: string, playerColor: string) => {
     setLoading(true);
     setError(null);
+    console.log('🎮 Iniciando creación de sala...');
+    console.log(`   - Jugador: ${playerName}`);
+    console.log(`   - Color: ${playerColor}`);
+    
     try {
       // 1. Llamar a la API del backend para crear la sala
+      console.log('📡 Llamando a la API del backend...');
       const response = await createRoom(playerName, playerColor);
+      console.log('✅ Respuesta del backend:', response);
       setRoomCode(response.code);
       setRoomPort(response.port);
 
