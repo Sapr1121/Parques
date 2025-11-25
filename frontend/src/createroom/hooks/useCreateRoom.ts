@@ -24,12 +24,12 @@ export const useCreateRoom = () => {
 
       // 3. Conectar WebSocket al servidor Python con reintentos
       let retries = 3;
-      let connected = false;
-      while (retries > 0 && !connected) {
+      let isConnected = false;
+      while (retries > 0 && !isConnected) {
         try {
           console.log(`🔌 Intentando conectar... (intentos restantes: ${retries})`);
           await connect(playerName, playerColor);
-          connected = true;
+          isConnected = true;
           console.log('✅ Conectado al servidor');
         } catch {
           retries--;

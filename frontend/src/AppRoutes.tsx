@@ -4,6 +4,7 @@ import MainMenu from './Mainlobby/MainMenu';
 import { NetworkTest } from "./network/components/test"; 
 import { CreateRoom } from './createroom/pages/lobby';
 import  JoinRoom  from './joinroom/pages/JoinRoom';
+import Lobby from './joinroom/pages/Lobby';
 
 const AppRoutes = () => (
   <BrowserRouter>
@@ -13,6 +14,7 @@ const AppRoutes = () => (
       <Route path="/network-test" element={<NetworkTest />} /> 
       <Route path="/create-room" element={<CreateRoom />} />
       <Route path="/join-room" element={<JoinRoom />} />
+      <Route path="/lobby" element={<Lobby />} />
     </Routes>
   </BrowserRouter>
 );

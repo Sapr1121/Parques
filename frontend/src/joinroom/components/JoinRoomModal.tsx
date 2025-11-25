@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { useJoinRoom } from '../hooks/useJoinRoom';
 
-const JoinRoomModal = ({ isOpen, onClose, onJoin }) => {
+
+const JoinRoomModal = ({ isOpen, onClose, onJoin, selectedColor, setSelectedColor }) => {
   const [joinCode, setJoinCode] = useState('');
+  const [playerName, setPlayerName] = useState('');
   const { status, error, handleJoin } = useJoinRoom();
 
   if (!isOpen) return null;
 
   const handleJoinSubmit = async () => {
     const code = joinCode.trim().toUpperCase();
+    const name = playerName.trim();
     if (code.length !== 8) {
       alert('El código debe tener exactamente 8 caracteres');
       return;
@@ -18,9 +21,17 @@ const JoinRoomModal = ({ isOpen, onClose, onJoin }) => {
       alert('El código debe contener solo números y letras (A-F)');
       return;
     }
-    const lobby = await handleJoin(code);
+    if (!selectedColor) {
+      alert('Selecciona un color');
+      return;
+    }
+    if (!name || name.length < 3) {
+      alert('El nombre debe tener al menos 3 caracteres');
+      return;
+    }
+    const lobby = await handleJoin(code, selectedColor, name);
     if (lobby) {
-      onJoin(code); // Aquí puedes pasar también lobby info si lo necesitas
+      onJoin(code, selectedColor, name); // Pasa el color y nombre
     }
   };
 
@@ -63,6 +74,22 @@ const JoinRoomModal = ({ isOpen, onClose, onJoin }) => {
           </p>
         </div>
 
+        {/* Input del Nombre */}
+        <div className="mb-6">
+          <label className="block text-gray-700 font-bold mb-3 text-sm sm:text-base">
+            Nombre del jugador:
+          </label>
+          <input
+            type="text"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            maxLength={16}
+            placeholder="Tu nombre"
+            className="w-full px-4 py-3 sm:py-4 border-4 border-blue-300 rounded-xl text-center text-xl sm:text-2xl font-bold focus:outline-none focus:border-blue-500 transition-all"
+            style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}
+          />
+        </div>
+
         {/* Input del Código */}
         <div className="mb-6">
           <label className="block text-gray-700 font-bold mb-3 text-sm sm:text-base">
@@ -82,7 +109,6 @@ const JoinRoomModal = ({ isOpen, onClose, onJoin }) => {
               background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)'
             }}
           />
-      
           <div className="flex items-center justify-between mt-2 text-xs sm:text-sm">
             <span className="text-gray-500">
               {joinCode.length}/8 caracteres
@@ -90,6 +116,25 @@ const JoinRoomModal = ({ isOpen, onClose, onJoin }) => {
             {joinCode.length === 8 && (
               <span className="text-green-600 font-bold">✓ Código completo</span>
             )}
+          </div>
+        </div>
+
+        {/* Selector de color */}
+        <div className="mb-6">
+          <label className="block text-gray-700 font-bold mb-3 text-sm sm:text-base">
+            Selecciona tu color:
+          </label>
+          <div className="flex gap-2 justify-center">
+            {['amarillo', 'azul', 'rojo', 'verde'].map((color) => (
+              <button
+                key={color}
+                type="button"
+                className={`px-4 py-2 rounded font-bold border-2 ${selectedColor === color ? 'border-yellow-500 bg-yellow-100' : 'border-gray-300 bg-gray-100'}`}
+                onClick={() => setSelectedColor(color)}
+              >
+                {color.charAt(0).toUpperCase() + color.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
 

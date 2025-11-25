@@ -1,4 +1,4 @@
-export type MessageType = "CONECTAR" | "MOVER" | "CHAT" | "ERROR";
+export type MessageType = "CONECTAR" | "MOVER" | "CHAT" | "ERROR" | "LISTO";
 
 export interface BaseMessage {
   tipo: MessageType;
