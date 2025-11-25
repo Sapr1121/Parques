@@ -13,11 +13,15 @@ class WebSocketService {
 
   connect(playerName: string, playerColor?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      console.log('🔄 connect() llamado, estado actual:', this.socket?.readyState);
+      
       if (this.socket?.readyState === WebSocket.OPEN) {
+        console.log('✅ Ya conectado, no reconectar');
         resolve();
         return;
       }
 
+      console.log('🔌 Creando nueva conexión WebSocket a:', this.url);
       this.socket = new WebSocket(this.url);
 
       this.socket.onopen = () => {
@@ -45,7 +49,8 @@ class WebSocketService {
         reject(new Error("Error de conexión WebSocket"));
       };
 
-      this.socket.onclose = () => {
+      this.socket.onclose = (event) => {
+        console.log('🔌 WebSocket cerrado:', event.code, event.reason);
         this.emit("close", "Conexión cerrada");
       };
     });
@@ -73,6 +78,7 @@ class WebSocketService {
   }
 
   disconnect() {
+    console.log('🛑 Desconectando WebSocket...');
     this.socket?.close();
     this.socket = null;
   }

@@ -1,3 +1,38 @@
+export async function queryRoom(code: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const client = new net.Socket();
+    let responseData = '';
+
+    client.connect(REGISTRY_PORT, REGISTRY_HOST, () => {
+      const queryMessageObj = { action: 'QUERY', hex_code: code };
+      const queryMessage = JSON.stringify(queryMessageObj);
+      console.log(`📤 [REGISTRY] Enviando QUERY JSON: ${queryMessage}`);
+      client.write(queryMessage);
+    });
+
+    client.on('data', (data) => {
+      responseData += data.toString();
+      try {
+        const parsed = JSON.parse(responseData);
+        client.end();
+        resolve(parsed);
+      } catch {
+        // esperar más datos
+      }
+    });
+
+    client.on('error', (err) => {
+      reject(new Error(`Error conectando al registro: ${err.message}`));
+    });
+
+    client.on('timeout', () => {
+      client.destroy();
+      reject(new Error('Timeout conectando al registro'));
+    });
+
+    client.setTimeout(5000);
+  });
+}
 import net from 'net';
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || '127.0.0.1';

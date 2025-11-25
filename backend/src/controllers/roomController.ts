@@ -1,3 +1,18 @@
+import { queryRoom } from '../services/registryService';
+// GET /api/query-room?code=HEXCODE
+export const queryRoomController = async (req: Request, res: Response) => {
+  const code = (req.query.code as string || '').toUpperCase();
+  if (!code || code.length !== 8) {
+    return res.status(400).json({ status: 'error', message: 'Código inválido' });
+  }
+  try {
+    const result = await queryRoom(code);
+    res.json(result);
+  } catch (err) {
+    console.error('[QUERY-ROOM] Error:', err);
+    res.status(500).json({ status: 'error', message: 'Error consultando registro' });
+  }
+};
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import os from 'os';

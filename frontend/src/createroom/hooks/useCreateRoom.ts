@@ -12,9 +12,15 @@ export const useCreateRoom = () => {
   const create = async (playerName: string, playerColor: string) => {
     setLoading(true);
     setError(null);
+    console.log('🎮 Iniciando creación de sala...');
+    console.log(`   - Jugador: ${playerName}`);
+    console.log(`   - Color: ${playerColor}`);
+    
     try {
       // 1. Llamar a la API del backend para crear la sala
+      console.log('📡 Llamando a la API del backend...');
       const response = await createRoom(playerName, playerColor);
+      console.log('✅ Respuesta del backend:', response);
       setRoomCode(response.code);
       setRoomPort(response.port);
 
@@ -24,12 +30,12 @@ export const useCreateRoom = () => {
 
       // 3. Conectar WebSocket al servidor Python con reintentos
       let retries = 3;
-      let connected = false;
-      while (retries > 0 && !connected) {
+      let isConnected = false;
+      while (retries > 0 && !isConnected) {
         try {
           console.log(`🔌 Intentando conectar... (intentos restantes: ${retries})`);
           await connect(playerName, playerColor);
-          connected = true;
+          isConnected = true;
           console.log('✅ Conectado al servidor');
         } catch {
           retries--;

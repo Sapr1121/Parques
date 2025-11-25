@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateRoom } from '../hooks/useCreateRoom';
 import { ColorSelector } from '../components/ColorSelector';
@@ -13,6 +13,13 @@ export const CreateRoom: React.FC = () => {
   const handleCreate = async () => {
     if (!name.trim() || !color) return;
     await create(name.trim(), color);
+  };
+
+  // Navegar al lobby cuando la conexión esté establecida
+  const handleGoToLobby = () => {
+    if (roomCode && connected) {
+      navigate('/lobby', { state: { isAdmin: true, roomCode, playerName: name.trim(), playerColor: color } });
+    }
   };
 
   const handleCopy = () => {
@@ -210,6 +217,39 @@ export const CreateRoom: React.FC = () => {
               Esperando jugadores...
             </p>
           </div>
+
+          {/* Botón para ir al Lobby */}
+          <button
+            onClick={handleGoToLobby}
+            disabled={!connected}
+            style={{
+              width: '100%',
+              marginTop: '1.5rem',
+              background: connected 
+                ? 'linear-gradient(90deg, #34d399, #10b981)' 
+                : 'rgba(156, 163, 175, 0.5)',
+              color: 'white',
+              fontWeight: '900',
+              fontSize: '1.125rem',
+              padding: '1rem 2rem',
+              borderRadius: '2rem',
+              border: connected ? '4px solid #6ee7b7' : '4px solid rgba(156, 163, 175, 0.3)',
+              cursor: connected ? 'pointer' : 'not-allowed',
+              transition: 'transform 0.3s',
+              boxShadow: connected ? '0 20px 40px rgba(52, 211, 153, 0.5)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
+            }}
+            onMouseEnter={(e) => connected && (e.currentTarget.style.transform = 'scale(1.05)')}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            </svg>
+            {connected ? 'Ir al Lobby' : 'Conectando...'}
+          </button>
         </div>
 
         <style>{`

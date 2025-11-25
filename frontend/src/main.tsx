@@ -1,13 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './index.css';
 import App from './App';
-import { SocketProvider } from './contexts/SocketContext'; // 
+import './index.css';
+import { SocketProvider } from './contexts/SocketContext';
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <SocketProvider>       
-      <App />
-    </SocketProvider>
-  </React.StrictMode>
+  // StrictMode deshabilitado temporalmente para evitar doble ejecución de efectos
+  // <React.StrictMode>
+  <SocketProvider>
+    <App />
+  </SocketProvider>
+  // </React.StrictMode>
 );

@@ -64,6 +64,10 @@ const Centro = () => (
 );
 
 const Board: React.FC = () => {
+  // El orden de turnos viene del state de navegación (desde /determinar-turno)
+  // const location = useLocation();
+  // const turnOrder = location.state?.turnOrder || [];
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 p-2 sm:p-4">
       <div className="bg-white p-2 sm:p-4 rounded-xl shadow-2xl">
@@ -76,7 +80,7 @@ const Board: React.FC = () => {
         >
           
           {/* ========== CARCEL ROJA (5x5) ========== */}
-          <div style={{gridRow: '5/11', gridColumn: '1/11'}}><Carcel img={RedJeil} /></div>
+          <div style={{gridRow: '1/9', gridColumn: '1/9'}}><Carcel img={RedJeil} /></div>
           
           {/* ========== BRAZO SUPERIOR (ROJO) ========== */}
           {/* Fila 1 */}
@@ -120,7 +124,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '8', gridColumn: '11'}}><Casilla num={26} /></div>
           
           {/* ========== CARCEL AZUL (5x5) ========== */}
-          <div style={{gridRow: '5/10', gridColumn: '12/20'}}><Carcel img={BlueJeil} /></div>
+          <div style={{gridRow: '1/9', gridColumn: '12/20'}}><Carcel img={BlueJeil} /></div>
           
           {/* ========== BRAZO IZQUIERDO (VERDE) ========== */}
           {/* Columna superior */}
@@ -187,7 +191,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '11', gridColumn: '19'}}><Casilla num={16} /></div>  
 
           {/* ========== CARCEL VERDE (5x5) ========== */}
-          <div style={{gridRow: '12/30', gridColumn: '3/11'}}><Carcel img={GreenJeil} /></div>
+          <div style={{gridRow: '12/17', gridColumn: '1/9'}}><Carcel img={GreenJeil} /></div>
           
           {/* ========== BRAZO INFERIOR (AMARILLO) ========== */}
           {/* Fila 12 */}
@@ -231,7 +235,7 @@ const Board: React.FC = () => {
           <div style={{gridRow: '19', gridColumn: '11'}}><Casilla num={1} /></div>
 
           {/* ========== CARCEL AMARILLA (5x5) ========== */}
-          <div style={{gridRow: '12/20', gridColumn: '12/50'}}><Carcel img={YellowJeil} /></div>
+          <div style={{gridRow: '12/17', gridColumn: '12/20'}}><Carcel img={YellowJeil} /></div>
           
         </div>
       </div>
