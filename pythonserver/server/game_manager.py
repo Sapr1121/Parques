@@ -33,6 +33,7 @@ class GameManager:
         # Control de dobles consecutivos
         self.dobles_consecutivos = 0
         self.max_dobles = 3
+        self.premio_tres_dobles = False  # ⭐ NUEVO: Flag para premio de 3 dobles
         
         # Control de estado de turno
         self.accion_realizada = False
@@ -476,6 +477,7 @@ class GameManager:
         self.accion_realizada = False
         self.debe_avanzar_turno = False
         self.dados_usados = []  # ⭐ NUEVO: Resetear dados usados
+        self.premio_tres_dobles = False  # ⭐ NUEVO: Resetear premio
         logger.debug("🔄 Estado de turno reseteado")
     
     def obtener_jugador_actual(self):
@@ -521,21 +523,24 @@ class GameManager:
                 if fichas_bloqueadas:
                     return True
             
-            # Revisar fichas en juego y en camino a meta
+            # Revisar fichas en juego (incluyendo las que están en camino a meta)
             fichas_movibles = [f for f in jugador.fichas 
-                              if f.estado in ["EN_JUEGO", "CAMINO_META"]]
+                              if f.estado == proto.ESTADO_EN_JUEGO]
             
             if not fichas_movibles:
                 return False
                 
             # Verificar si alguna ficha puede moverse
             for ficha in fichas_movibles:
-                if ficha.estado == "CAMINO_META":
+                # Verificar si está en camino a meta
+                en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
+                
+                if en_camino_meta:
                     # Verificar si puede moverse con algún dado individual
                     pasos_restantes = 7 - ficha.posicion_meta
                     if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
                         return True
-                else:  # EN_JUEGO
+                else:  # EN_JUEGO en tablero principal
                     return True  # Siempre puede moverse en el tablero principal
             
             return False
@@ -554,8 +559,17 @@ class GameManager:
         
         if self.ultimo_es_doble:
             self.dobles_consecutivos += 1
-            self.debe_avanzar_turno = False
-            logger.debug(f"¡DOBLES! ({self.dobles_consecutivos}/{self.max_dobles}) - Mantiene turno")
+            
+            # ⭐ PREMIO: Si llegó a 3 dobles, puede sacar una ficha del juego
+            if self.dobles_consecutivos >= self.max_dobles:
+                logger.info(f"🎉 ¡PREMIO! Jugador sacó {self.dobles_consecutivos} dobles consecutivos")
+                logger.info("🏆 Puede elegir UNA ficha para enviarla a META (sacarla del juego)")
+                self.premio_tres_dobles = True  # Nueva bandera
+                self.debe_avanzar_turno = True  # Después de elegir, avanza turno
+                self.ultimo_es_doble = False  # Para evitar más acciones en este turno
+            else:
+                self.debe_avanzar_turno = False
+                logger.debug(f"¡DOBLES! ({self.dobles_consecutivos}/{self.max_dobles}) - Mantiene turno")
         else:
             self.dobles_consecutivos = 0
             # Ya no establecemos debe_avanzar_turno aquí, lo manejará el método mover_ficha
@@ -750,11 +764,13 @@ class GameManager:
                 logger.warning(f"Dado elegido inválido: {dado_elegido}")
                 return False, "Opción de dado inválida"
 
-            # Contar fichas en juego y validar reglas especiales
-            fichas_en_juego = sum(1 for f in jugador.fichas if f.estado in ["EN_JUEGO", "CAMINO_META"])
+            # Contar fichas en juego (solo EN_JUEGO, no existe CAMINO_META como estado)
+            fichas_en_juego = sum(1 for f in jugador.fichas if f.estado == proto.ESTADO_EN_JUEGO)
             
-            # Validaciones según el estado de la ficha
-            if ficha.estado == "CAMINO_META":
+            # Validaciones según si está en camino a meta
+            en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
+            
+            if en_camino_meta:
                 if dado_elegido == 3:
                     return False, "No puedes usar la suma de dados en el camino a meta"
                     
@@ -1025,3 +1041,155 @@ class GameManager:
                            f"(ID: {ficha_id}) en casilla {casilla_destino}")
             
             return fichas_capturadas
+        
+    def aplicar_premio_tres_dobles(self, socket_cliente, ficha_id):
+        """
+        Aplica el premio por sacar 3 dobles consecutivos:
+        - Envía la ficha elegida directamente a META
+        - Resetea dobles consecutivos
+        - Avanza el turno
+        
+        Args:
+            socket_cliente: websocket del jugador
+            ficha_id: ID de la ficha a enviar a META
+        
+        Returns:
+            tuple: (exito, resultado)
+        """
+        with self.lock:
+            if socket_cliente not in self.clientes:
+                return False, {"error": "Cliente no válido"}
+            
+            if not self.premio_tres_dobles:
+                return False, {"error": "No tienes premio de 3 dobles activo"}
+            
+            jugador = self.clientes[socket_cliente]["jugador"]
+            nombre = self.clientes[socket_cliente]["nombre"]
+            color = self.clientes[socket_cliente]["color"]
+            
+            # Validar ficha_id
+            if ficha_id < 0 or ficha_id >= len(jugador.fichas):
+                return False, {"error": "Ficha inválida"}
+            
+            ficha = jugador.fichas[ficha_id]
+            
+            # Validar que la ficha esté en juego (EN_JUEGO es el único estado válido aparte de BLOQUEADO y META)
+            if ficha.estado != proto.ESTADO_EN_JUEGO:
+                return False, {"error": "Solo puedes enviar a META fichas que estén en el tablero"}
+            
+            # Guardar información anterior
+            estado_anterior = ficha.estado
+            posicion_anterior = ficha.posicion
+            en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
+            
+            # Enviar ficha directamente a META
+            ficha.estado = proto.ESTADO_META
+            ficha.posicion = -1  # Meta final
+            if en_camino_meta:
+                ficha.posicion_meta = 8  # Posición final en meta
+            
+            logger.info(f"🏆 PREMIO: Ficha {ficha_id} de {nombre} ({color}) "
+                       f"enviada a META desde {'camino a meta' if en_camino_meta else f'casilla {posicion_anterior}'}")
+            
+            # Resetear estado completamente (importante: también ultimo_es_doble)
+            self.premio_tres_dobles = False
+            self.dobles_consecutivos = 0
+            self.ultimo_es_doble = False  # ⭐ CRÍTICO: Evitar que mantenga el turno
+            self.accion_realizada = True
+            self.debe_avanzar_turno = True  # ⭐ FORZAR avance de turno
+            
+            # Verificar si ganó con esta ficha
+            if jugador.ha_ganado():
+                self.juego_terminado = True
+                logger.info(f"🎊 ¡{nombre} ha ganado el juego con el premio de 3 dobles!")
+            
+            return True, {
+                "ficha_id": ficha_id,
+                "color": color,
+                "desde": posicion_anterior,
+                "estado_anterior": estado_anterior,
+                "ha_ganado": self.juego_terminado
+            }
+    
+    def obtener_fichas_elegibles_para_premio(self, socket_cliente):
+        """
+        Obtiene la lista de fichas que pueden ser enviadas a META con el premio.
+        Solo fichas en EN_JUEGO o CAMINO_META.
+        
+        Returns:
+            list: Lista de IDs de fichas elegibles
+        """
+        with self.lock:
+            try:
+                if socket_cliente not in self.clientes:
+                    logger.warning("Socket no encontrado en clientes")
+                    return []
+                
+                jugador = self.clientes[socket_cliente]["jugador"]
+                fichas_elegibles = []
+                
+                logger.debug(f"Buscando fichas elegibles para {jugador.name}...")
+                
+                for idx, ficha in enumerate(jugador.fichas):
+                    logger.debug(f"Ficha {idx}: estado={ficha.estado}, pos={ficha.posicion}")
+                    
+                    # ⭐ CORRECCIÓN: Solo fichas EN_JUEGO son elegibles (CAMINO_META no existe en protocol.py)
+                    if ficha.estado == proto.ESTADO_EN_JUEGO:
+                        ficha_info = {
+                            "id": idx,
+                            "estado": ficha.estado,
+                            "color": ficha.color,
+                            "posicion": ficha.posicion
+                        }
+                        
+                        # Verificar si tiene posicion_meta (fichas en camino a meta)
+                        if hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0:
+                            ficha_info["posicion_meta"] = ficha.posicion_meta
+                            ficha_info["en_camino_meta"] = True
+                        else:
+                            ficha_info["posicion_meta"] = None
+                            ficha_info["en_camino_meta"] = False
+                        
+                        fichas_elegibles.append(ficha_info)
+                        logger.debug(f"✅ Ficha {idx} es elegible: {ficha_info}")
+                
+                logger.info(f"📊 Total fichas elegibles: {len(fichas_elegibles)}")
+                return fichas_elegibles
+                
+            except Exception as e:
+                logger.error(f"Error en obtener_fichas_elegibles_para_premio: {e}", exc_info=True)
+                return []
+        
+    def forzar_tres_dobles_debug(self, socket_cliente):
+        """
+        🔧 MÉTODO DE DEBUG: Simula que el jugador sacó 3 dobles consecutivos
+        """
+        with self.lock:
+            if socket_cliente not in self.clientes:
+                return False, "Cliente no válido"
+            
+            if not self.es_turno_de(socket_cliente):
+                return False, "No es tu turno"
+            
+            # Simular dados dobles
+            self.ultimo_dado1 = 6
+            self.ultimo_dado2 = 6
+            self.ultima_suma = 12
+            self.ultimo_es_doble = True
+            self.dados_lanzados = True
+            self.accion_realizada = False
+            self.dados_usados = []
+            
+            # Activar premio de 3 dobles
+            self.dobles_consecutivos = 3
+            self.premio_tres_dobles = True
+            self.debe_avanzar_turno = True
+            
+            logger.warning("🔧 DEBUG: Forzados 3 dobles consecutivos - Premio activado")
+            
+            return True, {
+                "dado1": self.ultimo_dado1,
+                "dado2": self.ultimo_dado2,
+                "suma": self.ultima_suma,
+                "dobles_consecutivos": self.dobles_consecutivos
+            }

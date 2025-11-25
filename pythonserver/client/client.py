@@ -692,6 +692,56 @@ mostrar_info_sincronizacion()
             self.ya_lance_en_determinacion = False
             self.estoy_en_desempate = False
 
+        elif tipo == proto.MSG_PREMIO_TRES_DOBLES:
+            fichas_elegibles = mensaje.get("fichas_elegibles", [])
+            mensaje_texto = mensaje.get("mensaje", "")
+            
+            print("\n" + "🏆"*30)
+            print("¡PREMIO DE 3 DOBLES!".center(60))
+            print("🏆"*30)
+            print(f"\n{mensaje_texto}")
+            print("\n📋 Fichas elegibles para enviar a META:")
+            
+            for ficha in fichas_elegibles:
+                ficha_id = ficha['id']
+                posicion = ficha.get('posicion', '?')
+                estado = ficha.get('estado', '')
+                
+                if estado == "EN_JUEGO":
+                    print(f"   {ficha_id + 1}. Ficha en casilla {posicion + 1}")
+                else:
+                    print(f"   {ficha_id + 1}. Ficha (estado: {estado})")
+            
+            print("\n" + "="*60)
+            
+            # Solicitar elección al usuario
+            try:
+                loop = asyncio.get_event_loop()
+                seleccion = await loop.run_in_executor(
+                    None,
+                    input,
+                    f"\n🏆 Elige una ficha para enviar a META (1-{len(fichas_elegibles)}): "
+                )
+                ficha_num = int(seleccion)
+                
+                if 1 <= ficha_num <= len(fichas_elegibles):
+                    ficha_elegida = fichas_elegibles[ficha_num - 1]
+                    ficha_id = ficha_elegida['id']
+                    
+                    print(f"\n✅ Enviando ficha {ficha_id + 1} a META...")
+                    await self.enviar(proto.mensaje_elegir_ficha_premio(ficha_id))
+                    
+                    # Esperar respuesta
+                    await asyncio.sleep(1.0)
+                    await self.procesar_mensajes()
+                else:
+                    print("⚠️ Número de ficha inválido")
+                    
+            except ValueError:
+                print("⚠️ Entrada inválida")
+            except Exception as e:
+                print(f"❌ Error eligiendo ficha: {e}")
+        
         elif tipo == proto.MSG_INFO:
             info_text = mensaje.get('mensaje', '')
             print(f"\nℹ️ {info_text}")
@@ -1226,6 +1276,17 @@ mostrar_info_sincronizacion()
                 opcion, opciones = await self.menu_turno()
 
                 try:
+                    if opcion.lower() in ['debug3', 'd3', 'forzar3dobles']:
+                        print("\n🔧 Forzando 3 dobles consecutivos (debug)...")
+                        try:
+                            await self.enviar(proto.mensaje_debug_forzar_tres_dobles())
+                            print("✅ Mensaje de forzar 3 dobles enviado")
+                            await asyncio.sleep(1.0)
+                            await self.procesar_mensajes()
+                        except Exception as e:
+                            print(f"❌ Error enviando mensaje de forzar 3 dobles: {e}")
+                        continue
+
                     opcion_num = int(opcion)
                     if opcion_num < 1 or opcion_num > len(opciones):
                         print("⚠️ Opción no válida")
