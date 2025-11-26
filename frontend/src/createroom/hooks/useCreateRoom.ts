@@ -12,15 +12,41 @@ export const useCreateRoom = () => {
   const create = async (playerName: string, playerColor: string) => {
     setLoading(true);
     setError(null);
+    console.log('🎮 Iniciando creación de sala...');
+    console.log(`   - Jugador: ${playerName}`);
+    console.log(`   - Color: ${playerColor}`);
+    
     try {
       // 1. Llamar a la API del backend para crear la sala
+      console.log('📡 Llamando a la API del backend...');
       const response = await createRoom(playerName, playerColor);
+      console.log('✅ Respuesta del backend:', response);
       setRoomCode(response.code);
       setRoomPort(response.port);
 
-      // 2. Conectar WebSocket al servidor Python
-      await connect(playerName, playerColor);
+      // 2. Esperar a que los servidores Python se inicien
+      console.log('⏳ Esperando a que el servidor se inicie...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
+      // 3. Conectar WebSocket al servidor Python con reintentos
+      let retries = 3;
+      let isConnected = false;
+      while (retries > 0 && !isConnected) {
+        try {
+          console.log(`🔌 Intentando conectar... (intentos restantes: ${retries})`);
+          await connect(playerName, playerColor);
+          isConnected = true;
+          console.log('✅ Conectado al servidor');
+        } catch {
+          retries--;
+          if (retries > 0) {
+            console.log('⏳ Reintentando en 2 segundos...');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            throw new Error('No se pudo conectar al servidor después de varios intentos');
+          }
+        }
+      }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Error creando sala';
       setError(errorMessage);

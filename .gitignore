@@ -1,3 +1,5 @@
 .env
 test
 backup
+__pycache__/
+*.pyc

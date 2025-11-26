@@ -643,7 +643,7 @@ async def main_registry_server():
     """Inicia el servidor de registro"""
     server = RegistryServer(host="0.0.0.0", port=9000)
     await server.start()
-
+    
 async def main():
     """Función principal"""
     print("\n" + "🎮"*35)
