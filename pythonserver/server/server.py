@@ -457,6 +457,36 @@ class ParchisServer:
             await self.broadcast(mensaje_dados)
             logger.info(f"Dados enviados exitosamente")
         
+            # ⭐ CRÍTICO: Verificar PRIMERO si se activó el premio de 3 dobles
+            if self.game_manager.premio_tres_dobles:
+                logger.info(f"🏆 Premio de 3 dobles activado - solicitando elección de ficha...")
+                
+                info = self.game_manager.clientes[websocket]
+                
+                # Obtener fichas elegibles
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                
+                if fichas_elegibles:
+                    # Enviar mensaje al jugador para que elija
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(fichas_elegibles))
+                    logger.info(f"Mensaje de premio enviado a {info['nombre']} con {len(fichas_elegibles)} fichas elegibles")
+                else:
+                    logger.warning(f"{info['nombre']} no tiene fichas elegibles para el premio")
+                    await self.broadcast(proto.mensaje_info(
+                        f"{info['nombre']} sacó 3 dobles pero no tiene fichas elegibles. Turno pasado."
+                    ))
+                    # Avanzar turno automáticamente
+                    self.game_manager.premio_tres_dobles = False
+                    self.game_manager.dobles_consecutivos = 0
+                    self.game_manager.ultimo_es_doble = False
+                    if self.game_manager.avanzar_turno():
+                        await self.broadcast_tablero()
+                        await self.notificar_turno()
+                
+                logger.info(f"COMPLETADO: Dados [{dado1}] [{dado2}] = {suma} (¡PREMIO DE 3 DOBLES!)")
+                return
+            
+            # Si hay dobles pero NO es premio, intentar sacar fichas de la cárcel
             if es_doble:
                 logger.info(f"Dobles detectados - liberando TODAS las fichas automáticamente...")
             

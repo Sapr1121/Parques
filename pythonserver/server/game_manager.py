@@ -566,7 +566,7 @@ class GameManager:
                 logger.info("🏆 Puede elegir UNA ficha para enviarla a META (sacarla del juego)")
                 self.premio_tres_dobles = True  # Nueva bandera
                 self.debe_avanzar_turno = True  # Después de elegir, avanza turno
-                self.ultimo_es_doble = False  # Para evitar más acciones en este turno
+                # ⚠️ NO resetear ultimo_es_doble aquí - se hace al aplicar el premio
             else:
                 self.debe_avanzar_turno = False
                 logger.debug(f"¡DOBLES! ({self.dobles_consecutivos}/{self.max_dobles}) - Mantiene turno")
@@ -764,23 +764,25 @@ class GameManager:
                 logger.warning(f"Dado elegido inválido: {dado_elegido}")
                 return False, "Opción de dado inválida"
 
-            # Contar fichas en juego (solo EN_JUEGO, no existe CAMINO_META como estado)
-            fichas_en_juego = sum(1 for f in jugador.fichas if f.estado == proto.ESTADO_EN_JUEGO)
+            # Contar fichas EN_JUEGO que NO están en camino a meta
+            fichas_en_tablero = sum(
+                1 for f in jugador.fichas 
+                if f.estado == proto.ESTADO_EN_JUEGO and 
+                not (hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0)
+            )
             
             # Validaciones según si está en camino a meta
             en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
             
             if en_camino_meta:
-                if dado_elegido == 3:
-                    return False, "No puedes usar la suma de dados en el camino a meta"
-                    
-                # Validar que no exceda el límite de la meta
+                # ⭐ CORREGIDO: Permitir suma SI NO excede el límite
                 pasos_restantes = 7 - ficha.posicion_meta
                 if valor_movimiento > pasos_restantes:
-                    return False, "El movimiento excede la meta"
+                    return False, f"El movimiento excede la meta (necesitas máximo {pasos_restantes} pasos)"
                 
-            elif fichas_en_juego == 1 and not self.tablero.esta_cerca_meta(ficha):
-                # Con una sola ficha lejos de meta, debe usar la suma
+            elif fichas_en_tablero == 1 and not self.tablero.esta_cerca_meta(ficha) and len(self.dados_usados) == 0:
+                # ⭐ CRÍTICO: Solo forzar suma si NO se ha usado ningún dado aún
+                # Si ya se usó un dado, permitir el dado restante
                 if dado_elegido != 3:
                     return False, "Debes usar la suma de dados cuando tienes una sola ficha lejos de meta"
 
@@ -927,12 +929,18 @@ class GameManager:
                 fichas_info = []
                 
                 for idx, ficha in enumerate(jugador.fichas):
-                    fichas_info.append({
+                    ficha_data = {
                         "id": idx,
                         "color": ficha.color,
                         "estado": ficha.estado,
                         "posicion": ficha.posicion
-                    })
+                    }
+                    
+                    # ⭐ NUEVO: Agregar posicion_meta si la ficha está en camino a meta
+                    if hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0:
+                        ficha_data["posicion_meta"] = ficha.posicion_meta
+                    
+                    fichas_info.append(ficha_data)
                 
                 estado["jugadores"].append({
                     "nombre": info["nombre"],
