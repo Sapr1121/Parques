@@ -111,8 +111,8 @@ class gameToken:
                 else:
                     # Entra al camino a meta
                     self.estado = "CAMINO_META"
-                    self.posicion_meta = pasos_restantes - 1
                     self.posicion = -1  # ⭐ CRÍTICO: Ya no está en el tablero principal
+                    self.posicion_meta = pasos_restantes - 1  # ⭐ IMPORTANTE: Establecer DESPUÉS de cambiar posición
                     casilla_meta_nombre = tablero.casillas_meta[self.color][self.posicion_meta]
                     print(f"🎯 Ficha {self.color} entró al camino a meta en {casilla_meta_nombre} (posición {self.posicion_meta}/7)")
                     return True

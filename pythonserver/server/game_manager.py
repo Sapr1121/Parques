@@ -523,25 +523,26 @@ class GameManager:
                 if fichas_bloqueadas:
                     return True
             
-            # Revisar fichas en juego (incluyendo las que están en camino a meta)
-            fichas_movibles = [f for f in jugador.fichas 
-                              if f.estado == proto.ESTADO_EN_JUEGO]
+            # Revisar fichas EN_JUEGO (en tablero principal)
+            fichas_en_tablero = [f for f in jugador.fichas 
+                                if f.estado == proto.ESTADO_EN_JUEGO and
+                                not (hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0)]
             
-            if not fichas_movibles:
-                return False
-                
-            # Verificar si alguna ficha puede moverse
-            for ficha in fichas_movibles:
-                # Verificar si está en camino a meta
-                en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
-                
-                if en_camino_meta:
-                    # Verificar si puede moverse con algún dado individual
-                    pasos_restantes = 7 - ficha.posicion_meta
-                    if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
-                        return True
-                else:  # EN_JUEGO en tablero principal
-                    return True  # Siempre puede moverse en el tablero principal
+            # Si hay fichas en el tablero principal, puede moverlas
+            if fichas_en_tablero:
+                return True
+            
+            # Revisar fichas en CAMINO_META
+            fichas_en_camino_meta = [f for f in jugador.fichas 
+                                     if f.estado in [proto.ESTADO_EN_JUEGO, "CAMINO_META"] and
+                                     hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0]
+            
+            # Verificar si alguna ficha en camino a meta puede moverse
+            for ficha in fichas_en_camino_meta:
+                pasos_restantes = 7 - ficha.posicion_meta
+                # Puede mover si algún dado individual cabe
+                if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
+                    return True
             
             return False
     
@@ -798,6 +799,34 @@ class GameManager:
                 if dado_elegido in [1, 2]:
                     self.dados_usados.append(dado_elegido)
                     logger.debug(f"Dado {dado_elegido} registrado como usado. Dados usados: {self.dados_usados}")
+                    
+                    # ⭐ CRÍTICO: Verificar si el dado restante es utilizable
+                    if len(self.dados_usados) == 1 and not self.ultimo_es_doble:
+                        # Determinar cuál dado queda
+                        dado_restante_valor = self.ultimo_dado2 if dado_elegido == 1 else self.ultimo_dado1
+                        
+                        # Verificar si ALGUNA ficha puede usar el dado restante
+                        puede_usar_restante = False
+                        
+                        for f in jugador.fichas:
+                            if f.estado == proto.ESTADO_BLOQUEADO or f.estado == proto.ESTADO_META:
+                                continue
+                            
+                            # Verificar si está en camino a meta
+                            en_camino = hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0
+                            
+                            if en_camino:
+                                pasos_rest = 7 - f.posicion_meta
+                                if dado_restante_valor <= pasos_rest:
+                                    puede_usar_restante = True
+                                    break
+                            else:  # En tablero principal
+                                puede_usar_restante = True
+                                break
+                        
+                        if not puede_usar_restante:
+                            logger.info(f"⚠️ El dado restante ({dado_restante_valor}) no puede ser usado. Forzando avance de turno.")
+                            self.debe_avanzar_turno = True
                 
                 # ⭐ NUEVO: Ejecutar capturas si la ficha está EN_JUEGO
                 fichas_capturadas = []
@@ -936,8 +965,17 @@ class GameManager:
                         "posicion": ficha.posicion
                     }
                     
-                    # ⭐ NUEVO: Agregar posicion_meta si la ficha está en camino a meta
-                    if hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0:
+                    # ⭐ CRÍTICO: SIEMPRE incluir posicion_meta si estado es CAMINO_META
+                    if ficha.estado == "CAMINO_META":
+                        # Si está en CAMINO_META, DEBE tener posicion_meta
+                        if hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None:
+                            ficha_data["posicion_meta"] = ficha.posicion_meta
+                        else:
+                            # Fallback: Si no tiene posicion_meta, usar 0
+                            ficha_data["posicion_meta"] = 0
+                            logger.warning(f"⚠️ Ficha en CAMINO_META sin posicion_meta, usando 0")
+                    elif hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0:
+                        # Para otros estados, solo si existe y es válido
                         ficha_data["posicion_meta"] = ficha.posicion_meta
                     
                     fichas_info.append(ficha_data)
