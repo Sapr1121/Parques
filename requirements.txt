@@ -1,0 +1,39 @@
+# ============================================
+# DEPENDENCIAS DEL PROYECTO PARCHÍS
+# Python 3.13.7
+# ============================================
+
+# WebSockets - Comunicación cliente-servidor
+websockets>=13.0
+
+# Asyncio (ya viene con Python 3.13, pero por si acaso)
+# asyncio está incluido en la biblioteca estándar
+
+# JSON (biblioteca estándar, no requiere instalación)
+# json está incluido en la biblioteca estándar
+
+# Threading (biblioteca estándar)
+# threading está incluido en la biblioteca estándar
+
+# Logging (biblioteca estándar)
+# logging está incluido en la biblioteca estándar
+
+# Random (biblioteca estándar)
+# random está incluido en la biblioteca estándar
+
+# ============================================
+# DEPENDENCIAS OPCIONALES PARA DESARROLLO
+# ============================================
+
+# Para depuración y testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Para formateo de código
+black>=24.0.0
+
+# Para análisis estático
+pylint>=3.0.0
+
+# Para type checking
+mypy>=1.8.0
