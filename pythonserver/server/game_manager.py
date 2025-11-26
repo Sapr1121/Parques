@@ -923,16 +923,34 @@ class GameManager:
                 return False
             
             jugador = self.clientes[socket_cliente]["jugador"]
+            info = self.clientes[socket_cliente]
+            
             try:
                 ha_ganado = jugador.ha_ganado()
                 
                 if ha_ganado:
-                    self.juego_terminado = True
-                    logger.info(f"🏆 ¡Jugador {jugador.nombre} ha ganado!")
+                    # Marcar jugador como terminado (agregar flag)
+                    info["terminado"] = True
+                    jugador.terminado = True  # También en el objeto User
+                    
+                    logger.info(f"🏆 ¡Jugador {info['nombre']} ({info['color']}) completó todas sus fichas!")
+                    
+                    # Contar jugadores activos (no terminados)
+                    jugadores_activos = sum(
+                        1 for cli_info in self.clientes.values()
+                        if not cli_info.get("terminado", False)
+                    )
+                    
+                    logger.info(f"📊 Jugadores activos restantes: {jugadores_activos}")
+                    
+                    # Si solo queda 1 jugador activo (o ninguno), terminar el juego
+                    if jugadores_activos <= 1:
+                        self.juego_terminado = True
+                        logger.info(f"🎊 ¡JUEGO TERMINADO! Solo queda {jugadores_activos} jugador(es) activo(s)")
                 
                 return ha_ganado
             except Exception as e:
-                logger.error(f"Error verificando victoria: {e}")
+                logger.error(f"Error verificando victoria: {e}", exc_info=True)
                 return False
     
     def obtener_estado_tablero(self):
