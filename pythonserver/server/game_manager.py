@@ -522,6 +522,7 @@ class GameManager:
                 fichas_bloqueadas = [f for f in jugador.fichas if f.estado == proto.ESTADO_BLOQUEADO]
                 if fichas_bloqueadas:
                     return True
+                # ⭐ CONTINUAR verificando fichas en juego aunque no haya en cárcel
             
             # Revisar fichas EN_JUEGO (en tablero principal)
             fichas_en_tablero = [f for f in jugador.fichas 
@@ -537,12 +538,18 @@ class GameManager:
                                      if f.estado in [proto.ESTADO_EN_JUEGO, "CAMINO_META"] and
                                      hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0]
             
-            # Verificar si alguna ficha en camino a meta puede moverse
+            # Verificar si alguna ficha en camino a meta puede moverse con los dados disponibles
             for ficha in fichas_en_camino_meta:
                 pasos_restantes = 7 - ficha.posicion_meta
-                # Puede mover si algún dado individual cabe
-                if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
-                    return True
+                # ⭐ CRÍTICO: Verificar dados individuales (no suma cuando hay dobles)
+                if self.ultimo_es_doble:
+                    # Con dobles, puede usar cualquiera de los dos dados individuales
+                    if self.ultimo_dado1 <= pasos_restantes:
+                        return True
+                else:
+                    # Sin dobles, puede usar dados individuales o suma
+                    if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
+                        return True
             
             return False
     
@@ -765,12 +772,19 @@ class GameManager:
                 logger.warning(f"Dado elegido inválido: {dado_elegido}")
                 return False, "Opción de dado inválida"
 
-            # Contar fichas EN_JUEGO que NO están en camino a meta
-            fichas_en_tablero = sum(
-                1 for f in jugador.fichas 
-                if f.estado == proto.ESTADO_EN_JUEGO and 
-                not (hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0)
-            )
+            # ⭐ CRÍTICO: Contar TODAS las fichas movibles (tablero + camino a meta)
+            fichas_movibles = 0
+            
+            for f in jugador.fichas:
+                if f.estado == proto.ESTADO_BLOQUEADO or f.estado == proto.ESTADO_META:
+                    continue
+                
+                # Contar fichas en tablero principal
+                if f.estado == proto.ESTADO_EN_JUEGO and not (hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0):
+                    fichas_movibles += 1
+                # Contar fichas en camino a meta
+                elif hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0:
+                    fichas_movibles += 1
             
             # Validaciones según si está en camino a meta
             en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
@@ -781,7 +795,7 @@ class GameManager:
                 if valor_movimiento > pasos_restantes:
                     return False, f"El movimiento excede la meta (necesitas máximo {pasos_restantes} pasos)"
                 
-            elif fichas_en_tablero == 1 and not self.tablero.esta_cerca_meta(ficha) and len(self.dados_usados) == 0:
+            elif fichas_movibles == 1 and not self.tablero.esta_cerca_meta(ficha) and len(self.dados_usados) == 0:
                 # ⭐ CRÍTICO: Solo forzar suma si NO se ha usado ningún dado aún
                 # Si ya se usó un dado, permitir el dado restante
                 if dado_elegido != 3:
@@ -800,8 +814,8 @@ class GameManager:
                     self.dados_usados.append(dado_elegido)
                     logger.debug(f"Dado {dado_elegido} registrado como usado. Dados usados: {self.dados_usados}")
                     
-                    # ⭐ CRÍTICO: Verificar si el dado restante es utilizable
-                    if len(self.dados_usados) == 1 and not self.ultimo_es_doble:
+                    # ⭐ CRÍTICO: Verificar si el dado restante es utilizable (CON O SIN DOBLES)
+                    if len(self.dados_usados) == 1:
                         # Determinar cuál dado queda
                         dado_restante_valor = self.ultimo_dado2 if dado_elegido == 1 else self.ultimo_dado1
                         
@@ -826,7 +840,13 @@ class GameManager:
                         
                         if not puede_usar_restante:
                             logger.info(f"⚠️ El dado restante ({dado_restante_valor}) no puede ser usado. Forzando avance de turno.")
-                            self.debe_avanzar_turno = True
+                            # ⭐ Con dobles: mantiene turno pero resetea dados
+                            if self.ultimo_es_doble:
+                                self.dados_usados = []  # Resetear para permitir nuevo lanzamiento
+                                logger.info("🔄 Dobles: mantiene turno, reseteando dados usados")
+                            else:
+                                # Sin dobles: avanza turno
+                                self.debe_avanzar_turno = True
                 
                 # ⭐ NUEVO: Ejecutar capturas si la ficha está EN_JUEGO
                 fichas_capturadas = []
