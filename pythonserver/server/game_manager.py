@@ -764,19 +764,22 @@ class GameManager:
                 logger.warning(f"Dado elegido inválido: {dado_elegido}")
                 return False, "Opción de dado inválida"
 
-            # ⭐ CRÍTICO: Contar TODAS las fichas movibles (tablero + camino a meta)
+            # ⭐ CRÍTICO: Contar fichas movibles REALES (que puedan usar AL MENOS un dado)
             fichas_movibles = 0
             
             for f in jugador.fichas:
                 if f.estado == proto.ESTADO_BLOQUEADO or f.estado == proto.ESTADO_META:
                     continue
                 
-                # Contar fichas en tablero principal
+                # Fichas en tablero principal SIEMPRE pueden moverse
                 if f.estado == proto.ESTADO_EN_JUEGO and not (hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0):
                     fichas_movibles += 1
-                # Contar fichas en camino a meta
+                # Fichas en camino a meta: solo contar si pueden usar AL MENOS un dado
                 elif hasattr(f, 'posicion_meta') and f.posicion_meta is not None and f.posicion_meta >= 0:
-                    fichas_movibles += 1
+                    pasos_restantes_f = 7 - f.posicion_meta
+                    # Verificar si puede usar algún dado individual (no suma)
+                    if self.ultimo_dado1 <= pasos_restantes_f or self.ultimo_dado2 <= pasos_restantes_f:
+                        fichas_movibles += 1
             
             # Validaciones según si está en camino a meta
             en_camino_meta = hasattr(ficha, 'posicion_meta') and ficha.posicion_meta is not None and ficha.posicion_meta >= 0
@@ -786,10 +789,15 @@ class GameManager:
                 pasos_restantes = 7 - ficha.posicion_meta
                 if valor_movimiento > pasos_restantes:
                     return False, f"El movimiento excede la meta (necesitas máximo {pasos_restantes} pasos)"
+                # ⭐ CRÍTICO: NO forzar suma en fichas en camino a meta
+                # Las fichas en camino a meta pueden usar dados individuales libremente
                 
-            elif fichas_movibles == 1 and not self.tablero.esta_cerca_meta(ficha) and len(self.dados_usados) == 0:
-                # ⭐ CRÍTICO: Solo forzar suma si NO se ha usado ningún dado aún
-                # Si ya se usó un dado, permitir el dado restante
+            elif not en_camino_meta and fichas_movibles == 1 and not self.tablero.esta_cerca_meta(ficha) and len(self.dados_usados) == 0:
+                # ⭐ CRÍTICO: Solo forzar suma si:
+                # - NO está en camino a meta
+                # - Tiene solo 1 ficha movible
+                # - La ficha NO está cerca de meta
+                # - NO se ha usado ningún dado aún
                 if dado_elegido != 3:
                     return False, "Debes usar la suma de dados cuando tienes una sola ficha lejos de meta"
 
@@ -907,12 +915,19 @@ class GameManager:
             # Si salió doble y no excede el límite, mantener turno
             if self.ultimo_es_doble and self.dobles_consecutivos < self.max_dobles:
                 logger.info(f"🔄 Doble! El jugador mantiene su turno (dobles: {self.dobles_consecutivos})")
-                # Resetear banderas de control pero mantener dobles_consecutivos
-                self.dados_lanzados = False
+                # ⭐ CRÍTICO: Solo resetear si usó AMBOS dados
+                if len(self.dados_usados) == 2:
+                    # Usó ambos dados → permitir lanzar de nuevo
+                    self.dados_lanzados = False
+                    self.dados_usados = []
+                    logger.debug("🔄 Usó ambos dados → puede lanzar de nuevo")
+                else:
+                    # Aún tiene dados sin usar → NO resetear dados_lanzados
+                    logger.debug(f"🔄 Aún tiene {2 - len(self.dados_usados)} dado(s) sin usar → mantiene dados_lanzados=True")
+                
+                # Siempre resetear estas banderas
                 self.accion_realizada = False
-                self.debe_avanzar_turno = False  # ⭐ CRÍTICO: Resetear flag
-                self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados
-                logger.debug("🔄 Flags reseteados: debe_avanzar_turno=False, dados_usados=[]")
+                self.debe_avanzar_turno = False
                 return False  # NO avanzó turno
             
             # Avanzar al siguiente jugador

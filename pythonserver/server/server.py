@@ -468,7 +468,7 @@ class ParchisServer:
                 
                 if fichas_elegibles:
                     # Enviar mensaje al jugador para que elija
-                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(fichas_elegibles))
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
                     logger.info(f"Mensaje de premio enviado a {info['nombre']} con {len(fichas_elegibles)} fichas elegibles")
                 else:
                     logger.warning(f"{info['nombre']} no tiene fichas elegibles para el premio")
@@ -607,6 +607,7 @@ class ParchisServer:
         if not exito:
             logger.warning(f"Error moviendo ficha: {resultado}")
             await self.enviar(websocket, proto.mensaje_error(resultado))
+            # ⭐ CRÍTICO: NO avanzar turno ni resetear nada si el movimiento falló
             return
         
         info = self.game_manager.clientes[websocket]

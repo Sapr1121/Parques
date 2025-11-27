@@ -100,6 +100,13 @@ class gameToken:
             # → pasos_restantes = 5 - 3 = 2 → sr1 (paso 1), sr2 (paso 2) → posicion_meta = 1
             pasos_restantes = pasos - pasos_antes_meta  # Pasos después de llegar a seguro_meta
             
+            # ⭐ CRÍTICO: Si pasos_restantes es 0, significa que se detuvo EXACTAMENTE en seguro_meta
+            if pasos_restantes == 0:
+                # La ficha se quedó en el seguro_meta (no entró al camino)
+                self.posicion = seguro_meta_color
+                print(f"→ Ficha {self.color} se movió a seguro_meta (C{seguro_meta_color + 1})")
+                return True
+            
             if pasos_restantes <= 8:  # Puede entrar al camino a meta
                 if pasos_restantes == 8:
                     # Llegó exactamente a META
