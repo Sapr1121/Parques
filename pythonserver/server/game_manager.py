@@ -564,6 +564,7 @@ class GameManager:
         self.dados_lanzados = True
         self.accion_realizada = False
         self.dados_usados = []  # ⭐ NUEVO: Reiniciar dados usados con cada tiro
+        self.debe_avanzar_turno = False  # ⭐ CRÍTICO: Resetear flag con cada nuevo lanzamiento
         
         if self.ultimo_es_doble:
             self.dobles_consecutivos += 1
@@ -742,15 +743,6 @@ class GameManager:
             # Validar que el dado no haya sido usado ya
             if dado_elegido in [1, 2] and dado_elegido in self.dados_usados:
                 return False, f"El dado {dado_elegido} ya fue usado"
-                
-            # ⭐ NUEVO: Establecer flag para avanzar turno si:
-            # 1. Se usa la suma de dados (dado_elegido = 3)
-            # 2. Ya se usó un dado y estamos usando el otro (solo si no es dobles)
-            if dado_elegido == 3:
-                self.debe_avanzar_turno = True
-            elif dado_elegido in [1, 2] and not self.ultimo_es_doble:  # Solo si no es dobles
-                if len(self.dados_usados) == 1 and dado_elegido not in self.dados_usados:
-                    self.debe_avanzar_turno = True
             
             # Validar que la ficha no esté en cárcel o meta
             if ficha.estado == "BLOQUEADO":
@@ -809,8 +801,14 @@ class GameManager:
                 self.accion_realizada = True
                 logger.info(f"Ficha {ficha_id} movida de {posicion_anterior} a {ficha.posicion}")
                 
-                # ⭐ NUEVO: Registrar dado usado si es individual
-                if dado_elegido in [1, 2]:
+                # ⭐ NUEVO: Marcar dados como usados DESPUÉS del movimiento exitoso
+                if dado_elegido == 3:
+                    # Usó la suma → marcar ambos dados como usados
+                    self.debe_avanzar_turno = True
+                    self.dados_usados = [1, 2]
+                    logger.debug("Suma usada → ambos dados marcados como usados")
+                elif dado_elegido in [1, 2]:
+                    # Registrar dado individual usado
                     self.dados_usados.append(dado_elegido)
                     logger.debug(f"Dado {dado_elegido} registrado como usado. Dados usados: {self.dados_usados}")
                     
@@ -912,8 +910,9 @@ class GameManager:
                 # Resetear banderas de control pero mantener dobles_consecutivos
                 self.dados_lanzados = False
                 self.accion_realizada = False
-                self.debe_avanzar_turno = False
+                self.debe_avanzar_turno = False  # ⭐ CRÍTICO: Resetear flag
                 self.dados_usados = []  # ⭐ IMPORTANTE: Reiniciar dados usados
+                logger.debug("🔄 Flags reseteados: debe_avanzar_turno=False, dados_usados=[]")
                 return False  # NO avanzó turno
             
             # Avanzar al siguiente jugador
