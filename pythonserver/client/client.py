@@ -454,7 +454,8 @@ mostrar_info_sincronizacion()
             requeridos = mensaje.get("requeridos", proto.MIN_JUGADORES)
             self.conectados = conectados
             self.requeridos = requeridos
-            print(f"\n⏳ Esperando jugadores... ({conectados}/{requeridos})")
+            # Mostrar como (X/4) para indicar el máximo de jugadores
+            print(f"\n⏳ Esperando jugadores... ({conectados}/{proto.MAX_JUGADORES})")
 
         elif tipo == proto.MSG_INICIO_JUEGO:
             self.juego_iniciado = True
@@ -692,6 +693,63 @@ mostrar_info_sincronizacion()
             self.ya_lance_en_determinacion = False
             self.estoy_en_desempate = False
 
+        elif tipo == proto.MSG_PREMIO_TRES_DOBLES:
+            fichas_elegibles = mensaje.get("fichas_elegibles", [])
+            mensaje_texto = mensaje.get("mensaje", "")
+            
+            print("\n" + "🏆"*30)
+            print("¡PREMIO DE 3 DOBLES!".center(60))
+            print("🏆"*30)
+            print(f"\n{mensaje_texto}")
+            print("\n📋 Fichas elegibles para enviar a META:")
+            
+            for idx, ficha in enumerate(fichas_elegibles):
+                ficha_id = ficha['id']
+                posicion = ficha.get('posicion', '?')
+                estado = ficha.get('estado', '')
+                
+                if estado == "EN_JUEGO":
+                    print(f"   {idx + 1}. Ficha #{ficha_id + 1} en casilla {posicion + 1}")
+                else:
+                    print(f"   {idx + 1}. Ficha #{ficha_id + 1} (estado: {estado})")
+            
+            print("\n" + "="*60)
+            
+            # Solicitar elección al usuario y enviar al servidor
+            # El servidor validará y reenviará este mensaje si la selección es inválida
+            try:
+                loop = asyncio.get_event_loop()
+                seleccion = await loop.run_in_executor(
+                    None,
+                    input,
+                    f"\n🏆 Elige una opción (1-{len(fichas_elegibles)}): "
+                )
+                opcion_num = int(seleccion)
+                
+                # Validar que la opción esté en el rango
+                if opcion_num < 1 or opcion_num > len(fichas_elegibles):
+                    print(f"⚠️ Opción fuera de rango (debe ser 1-{len(fichas_elegibles)})")
+                    await self.enviar(proto.mensaje_elegir_ficha_premio(-1))
+                    return
+                
+                # Obtener el ID real de la ficha desde la lista
+                ficha_id_real = fichas_elegibles[opcion_num - 1]['id']
+                
+                print(f"\n✅ Enviando ficha #{ficha_id_real + 1} a META...")
+                await self.enviar(proto.mensaje_elegir_ficha_premio(ficha_id_real))
+                
+                # Esperar respuesta del servidor
+                await asyncio.sleep(0.5)
+                await self.procesar_mensajes()
+                    
+            except ValueError:
+                print("⚠️ Debes ingresar un número válido.")
+                # Reenviar solicitud al servidor para reintentar
+                await self.enviar(proto.mensaje_elegir_ficha_premio(-1))  # -1 indica error de input
+            except Exception as e:
+                print(f"❌ Error: {e}.")
+                await self.enviar(proto.mensaje_elegir_ficha_premio(-1))
+        
         elif tipo == proto.MSG_INFO:
             info_text = mensaje.get('mensaje', '')
             print(f"\nℹ️ {info_text}")
@@ -824,8 +882,17 @@ mostrar_info_sincronizacion()
             
         print("\n🎯 FICHAS EN CAMINO A META:")
         if fichas_en_camino_meta:
+            # Mapeo correcto de colores a iniciales de casillas de meta
+            inicial_meta = {
+                'rojo': 'r',
+                'verde': 'v', 
+                'amarillo': 'a',
+                'azul': 'B'  # ⭐ Mayúscula para diferenciar de amarillo
+            }
+            inicial = inicial_meta.get(self.mi_color, self.mi_color[0])
+            
             for ficha in fichas_en_camino_meta:
-                casilla_actual = f"s{self.mi_color[0]}{ficha['posicion_meta'] + 1}"
+                casilla_actual = f"s{inicial}{ficha['posicion_meta'] + 1}"
                 print(f"  └─ Ficha {ficha['id'] + 1}: {casilla_actual}")
         else:
             print("  └─ Ninguna")
@@ -1062,9 +1129,9 @@ mostrar_info_sincronizacion()
                 conectados = getattr(self, "conectados", 0)
                 requeridos = getattr(self, "requeridos", proto.MIN_JUGADORES)
 
-                # 🔧 ARREGLAR: Mostrar número correcto de jugadores
+                # 🔧 ARREGLAR: Mostrar número correcto de jugadores (X/4)
                 if (conectados != self._last_conectados) or (requeridos != self._last_requeridos):
-                    print(f"\nConectados: {conectados} / {requeridos}")  # ← CAMBIADO
+                    print(f"\nConectados: {conectados} / {proto.MAX_JUGADORES}")  # Mostrar el máximo
                     self._last_conectados = conectados
                     self._last_requeridos = requeridos
 
@@ -1072,7 +1139,8 @@ mostrar_info_sincronizacion()
                     if conectados < proto.MIN_JUGADORES:
                         faltan = proto.MIN_JUGADORES - conectados
                         if self._last_missing != faltan:
-                            print(f"(No puedes iniciar aún: faltan {faltan} jugador(es))")
+                            print(f"(Mínimo {proto.MIN_JUGADORES} jugadores para iniciar. Faltan {faltan} jugador(es))")
+                            print(f"(Con {proto.MAX_JUGADORES} jugadores se inicia automáticamente)")
                             self._last_missing = faltan
                         await asyncio.sleep(0.5)
                         continue
@@ -1080,7 +1148,10 @@ mostrar_info_sincronizacion()
                     self._last_missing = None
                     
                     # 🆕 MOSTRAR PROMPT CADA VEZ QUE HAY SUFICIENTES JUGADORES
-                    print(f"\n✅ Suficientes jugadores conectados ({conectados}/{requeridos})")
+                    if conectados < proto.MAX_JUGADORES:
+                        print(f"\n✅ Suficientes jugadores conectados ({conectados}/{proto.MAX_JUGADORES})")
+                        print(f"💡 Puedes iniciar ahora o esperar hasta {proto.MAX_JUGADORES} jugadores para inicio automático")
+                    # Si llegó a 4, no mostrar nada porque inicia automáticamente
                     
                     try:
                         loop = asyncio.get_event_loop()
@@ -1226,6 +1297,17 @@ mostrar_info_sincronizacion()
                 opcion, opciones = await self.menu_turno()
 
                 try:
+                    if opcion.lower() in ['debug3', 'd3', 'forzar3dobles']:
+                        print("\n🔧 Forzando 3 dobles consecutivos (debug)...")
+                        try:
+                            await self.enviar(proto.mensaje_debug_forzar_tres_dobles())
+                            print("✅ Mensaje de forzar 3 dobles enviado")
+                            await asyncio.sleep(1.0)
+                            await self.procesar_mensajes()
+                        except Exception as e:
+                            print(f"❌ Error enviando mensaje de forzar 3 dobles: {e}")
+                        continue
+
                     opcion_num = int(opcion)
                     if opcion_num < 1 or opcion_num > len(opciones):
                         print("⚠️ Opción no válida")

@@ -92,20 +92,14 @@ class ParchisServer:
             # ⚡ IMPORTANTE: Agregar a clientes activos DESPUÉS del handshake
             # No aquí, para evitar conexiones fantasma
             
-            async for mensaje_raw in websocket:
+            async for mensaje_str in websocket:
                 try:
-                    # Validar que no sea vacío
-                    if not mensaje_raw or not mensaje_raw.strip():
-                        logger.warning(f"Mensaje vacío recibido de {addr}")
-                        continue
-                    
-                    mensaje = json.loads(mensaje_raw)
-                    logger.debug(f"Mensaje recibido de {addr}: {mensaje}")
-                    
+                    mensaje = json.loads(mensaje_str)
+                    tipo = mensaje.get("tipo")
                     
                     if not conectado_correctamente:
                         # 🆕 PERMITIR MSG_SYNC_REQUEST antes del handshake
-                        if mensaje.get("tipo") == proto.MSG_SYNC_REQUEST:
+                        if tipo == proto.MSG_SYNC_REQUEST:
                             logger.debug(f"SYNC_REQUEST (pre-handshake) recibido de {addr}")
                             
                             t1 = mensaje.get("t1")
@@ -125,7 +119,7 @@ class ParchisServer:
                             continue  # ← Continuar esperando más mensajes
                         
                         # 🆕 PERMITIR MSG_SOLICITAR_COLORES antes del handshake
-                        if mensaje.get("tipo") == proto.MSG_SOLICITAR_COLORES:
+                        if tipo == proto.MSG_SOLICITAR_COLORES:
                             logger.debug(f"SOLICITAR_COLORES (pre-handshake) recibido de {addr}")
                             
                             colores = self.game_manager.obtener_colores_disponibles()
@@ -141,8 +135,8 @@ class ParchisServer:
                             continue  # ← Continuar esperando más mensajes
                         
                         # Si no es SYNC_REQUEST ni SOLICITAR_COLORES ni MSG_CONECTAR, rechazar
-                        if mensaje.get("tipo") != proto.MSG_CONECTAR:
-                            logger.warning(f"Protocolo inválido de {addr}: {mensaje.get('tipo', 'UNKNOWN')}")
+                        if tipo != proto.MSG_CONECTAR:
+                            logger.warning(f"Protocolo inválido de {addr}: {tipo}")
                             await self.enviar(websocket, proto.mensaje_error("Protocolo inválido: se esperaba CONECTAR"))
                             await websocket.close(code=1008, reason="Protocolo inválido")
                             return
@@ -178,11 +172,20 @@ class ParchisServer:
                         conectados = len(self.game_manager.jugadores)
                         await self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES))
                         
-                        # Mensajes de admin
-                        if es_admin:
+                        # ⭐ NUEVO: Inicio automático con 4 jugadores
+                        if conectados == proto.MAX_JUGADORES:
+                            logger.info(f"🎊 Se alcanzó el máximo de jugadores ({proto.MAX_JUGADORES}). Iniciando automáticamente...")
+                            await self.broadcast(proto.mensaje_info(
+                                f"¡Sala completa con {proto.MAX_JUGADORES} jugadores! Iniciando partida automáticamente..."
+                            ))
+                            await asyncio.sleep(1)  # Breve pausa para que los jugadores lean el mensaje
+                            await self.iniciar_determinacion()
+                        # Mensajes de admin (solo si no se inició automáticamente)
+                        elif es_admin:
                             await self.enviar(websocket, proto.mensaje_info(
                                 "Eres el administrador. Para iniciar la partida envía MSG_LISTO. "
-                                f"Se requiere al menos {proto.MIN_JUGADORES} jugadores.", 
+                                f"Se requiere al menos {proto.MIN_JUGADORES} jugadores. "
+                                f"Con {proto.MAX_JUGADORES} jugadores se inicia automáticamente.", 
                                 es_admin=True
                             ))
                             await self.broadcast(proto.mensaje_info(
@@ -204,9 +207,12 @@ class ParchisServer:
                     if conectado_correctamente:
                         logger.debug(f"Procesando mensaje de {nombre}: {mensaje}")
                         await self.procesar_mensaje(websocket, mensaje)
+                    
+                    elif tipo == proto.MSG_DEBUG_FORZAR_TRES_DOBLES:
+                        await self.procesar_debug_tres_dobles(websocket)
                 
                 except json.JSONDecodeError as e:
-                    logger.error(f"Error parseando JSON de {addr}: {e} - mensaje: {mensaje_raw[:100]}")
+                    logger.error(f"Error parseando JSON de {addr}: {e} - mensaje: {mensaje_str[:100]}")
                     await self.enviar(websocket, proto.mensaje_error("Mensaje JSON inválido"))
                 except Exception as e:
                     logger.error(f"Error procesando mensaje de {addr}: {e}", exc_info=True)
@@ -419,6 +425,16 @@ class ParchisServer:
                     await self.enviar(websocket, proto.mensaje_error(resultado))
                     return
 
+            # ⭐ NUEVO: Handler para debug de 3 dobles
+            elif tipo == proto.MSG_DEBUG_FORZAR_TRES_DOBLES:
+                await self.procesar_debug_tres_dobles(websocket)
+                return
+            
+            # ⭐ NUEVO: Handler para elegir ficha del premio
+            elif tipo == proto.MSG_ELEGIR_FICHA_PREMIO:
+                await self.procesar_elegir_ficha_premio(websocket, mensaje)
+                return
+            
             else:
                 logger.warning(f"Mensaje no reconocido de {cliente_info}: {tipo}")
                 await self.enviar(websocket, proto.mensaje_error("Mensaje no reconocido"))
@@ -450,6 +466,36 @@ class ParchisServer:
             await self.broadcast(mensaje_dados)
             logger.info(f"Dados enviados exitosamente")
         
+            # ⭐ CRÍTICO: Verificar PRIMERO si se activó el premio de 3 dobles
+            if self.game_manager.premio_tres_dobles:
+                logger.info(f"🏆 Premio de 3 dobles activado - solicitando elección de ficha...")
+                
+                info = self.game_manager.clientes[websocket]
+                
+                # Obtener fichas elegibles
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                
+                if fichas_elegibles:
+                    # Enviar mensaje al jugador para que elija
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
+                    logger.info(f"Mensaje de premio enviado a {info['nombre']} con {len(fichas_elegibles)} fichas elegibles")
+                else:
+                    logger.warning(f"{info['nombre']} no tiene fichas elegibles para el premio")
+                    await self.broadcast(proto.mensaje_info(
+                        f"{info['nombre']} sacó 3 dobles pero no tiene fichas elegibles. Turno pasado."
+                    ))
+                    # Avanzar turno automáticamente
+                    self.game_manager.premio_tres_dobles = False
+                    self.game_manager.dobles_consecutivos = 0
+                    self.game_manager.ultimo_es_doble = False
+                    if self.game_manager.avanzar_turno():
+                        await self.broadcast_tablero()
+                        await self.notificar_turno()
+                
+                logger.info(f"COMPLETADO: Dados [{dado1}] [{dado2}] = {suma} (¡PREMIO DE 3 DOBLES!)")
+                return
+            
+            # Si hay dobles pero NO es premio, intentar sacar fichas de la cárcel
             if es_doble:
                 logger.info(f"Dobles detectados - liberando TODAS las fichas automáticamente...")
             
@@ -481,6 +527,23 @@ class ParchisServer:
                     logger.info(f"{info['nombre']} mantiene el turno - reenviando notificación")
                     await asyncio.sleep(0.1)
                     await self.broadcast(proto.mensaje_turno(info["nombre"], info["color"]))
+                
+                # ⭐ NUEVO: Verificar si puede hacer alguna acción CON DOBLES después de sacar/no tener fichas en cárcel
+                if not self.game_manager.puede_hacer_alguna_accion(websocket):
+                    info = self.game_manager.clientes[websocket]
+                    logger.info(f"{info['nombre']} sacó dobles pero no puede mover ninguna ficha - pasando turno")
+                    
+                    await self.broadcast(proto.crear_mensaje(
+                        proto.MSG_INFO,
+                        mensaje=f"{info['nombre']} sacó dobles pero no puede hacer ninguna acción. Turno pasado."
+                    ))
+                    
+                    if self.game_manager.forzar_avance_turno():
+                        logger.info("Turno forzado - notificando al siguiente jugador")
+                        await asyncio.sleep(0.2)
+                        await self.broadcast_tablero()
+                        await asyncio.sleep(0.1)
+                        await self.notificar_turno()
             
             else:
                 logger.info(f"Sin dobles - verificando si puede hacer acciones...")
@@ -570,6 +633,7 @@ class ParchisServer:
         if not exito:
             logger.warning(f"Error moviendo ficha: {resultado}")
             await self.enviar(websocket, proto.mensaje_error(resultado))
+            # ⭐ CRÍTICO: NO avanzar turno ni resetear nada si el movimiento falló
             return
         
         info = self.game_manager.clientes[websocket]
@@ -844,6 +908,135 @@ class ParchisServer:
         
         for websocket in clientes_desconectados:
             await self.limpiar_cliente(websocket, "Desconocido")
+        
+    async def procesar_elegir_ficha_premio(self, websocket, mensaje):
+        """Procesa la elección de ficha para el premio de 3 dobles"""
+        try:
+            info = self.game_manager.clientes.get(websocket)
+            
+            if not info:
+                await self.enviar(websocket, proto.mensaje_error("Cliente no válido"))
+                return
+            
+            ficha_id = mensaje.get("ficha_id")
+            if ficha_id is None or ficha_id < 0:
+                # Cliente envió -1 indicando error de input (ValueError)
+                if ficha_id == -1:
+                    await self.enviar(websocket, proto.mensaje_error("Entrada inválida, por favor ingresa un número"))
+                else:
+                    await self.enviar(websocket, proto.mensaje_error("ID de ficha no especificado"))
+                
+                # Reenviar mensaje de premio para retry
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                if fichas_elegibles:
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
+                return
+            
+            logger.info(f"🏆 {info['nombre']} eligió la ficha {ficha_id} para enviar a META")
+            
+            # Aplicar el premio
+            exito, resultado = self.game_manager.aplicar_premio_tres_dobles(websocket, ficha_id)
+            
+            if not exito:
+                error_msg = resultado.get("error", "Error aplicando premio")
+                logger.warning(f"❌ Elección inválida de {info['nombre']}: {error_msg}")
+                await self.enviar(websocket, proto.mensaje_error(error_msg))
+                
+                # ⭐ CRÍTICO: Reenviar mensaje de premio para que pueda reintentar
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                if fichas_elegibles:
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
+                    logger.info(f"🔄 Reenviado mensaje de premio a {info['nombre']} para retry")
+                return
+            
+            # Notificar a todos el premio aplicado
+            await self.broadcast(proto.crear_mensaje(
+                proto.MSG_INFO,
+                mensaje=f"🏆 {info['nombre']} envió su ficha #{ficha_id + 1} directamente a META con el premio de 3 dobles!"
+            ))
+            
+            # Actualizar tablero
+            await self.broadcast_tablero()
+            
+            # Verificar si ganó
+            if resultado.get("ha_ganado"):
+                await self.broadcast(proto.mensaje_victoria(info["nombre"], info["color"]))
+                logger.info(f"🎊 ¡{info['nombre']} ha ganado con el premio de 3 dobles!")
+                return
+            
+            # Avanzar turno
+            if self.game_manager.avanzar_turno():
+                await self.broadcast_tablero()
+                await self.notificar_turno()
+            
+        except Exception as e:
+            logger.error(f"Error en procesar_elegir_ficha_premio: {e}", exc_info=True)
+            await self.enviar(websocket, proto.mensaje_error("Error procesando elección de ficha"))
+    
+    async def procesar_debug_tres_dobles(self, websocket):
+        """🔧 DEBUG: Procesa comando para forzar 3 dobles consecutivos"""
+        try:
+            info = self.game_manager.clientes.get(websocket)
+            
+            if not info:
+                await self.enviar(websocket, proto.mensaje_error("Cliente no válido"))
+                return
+            
+            exito, resultado = self.game_manager.forzar_tres_dobles_debug(websocket)
+            
+            if not exito:
+                await self.enviar(websocket, proto.mensaje_error(resultado))
+                return
+            
+            logger.warning(f"🔧 DEBUG: {info['nombre']} forzó 3 dobles consecutivos")
+            
+            # Notificar a todos sobre los dados
+            await self.broadcast(proto.crear_mensaje(
+                proto.MSG_DADOS,
+                dado1=resultado['dado1'],
+                dado2=resultado['dado2'],
+                suma=resultado['suma'],
+                es_doble=True,
+                dobles_consecutivos=resultado['dobles_consecutivos']
+            ))
+            
+            # Notificar premio
+            await self.broadcast(proto.crear_mensaje(
+                proto.MSG_INFO,
+                mensaje=f"🏆 ¡{info['nombre'].upper()} sacó 3 dobles consecutivos! Puede enviar UNA ficha a META."
+            ))
+            
+            # Obtener fichas elegibles
+            try:
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                
+                if not fichas_elegibles:
+                    await self.broadcast(proto.crear_mensaje(
+                        proto.MSG_INFO,
+                        mensaje=f"{info['nombre']} no tiene fichas elegibles para el premio (todas en cárcel o meta)."
+                    ))
+                    # Forzar avance de turno
+                    if self.game_manager.avanzar_turno():
+                        await self.broadcast_tablero()
+                        await self.notificar_turno()
+                    return
+                
+                # Notificar al jugador que debe elegir
+                await self.enviar(websocket, proto.crear_mensaje(
+                    proto.MSG_PREMIO_TRES_DOBLES,
+                    fichas_elegibles=fichas_elegibles,
+                    mensaje="Elige una ficha para enviar a META"
+                ))
+                
+                logger.info(f"✅ Jugador {info['nombre']} tiene {len(fichas_elegibles)} fichas elegibles para premio")
+                
+            except Exception as e:
+                logger.error(f"Error obteniendo fichas elegibles: {e}", exc_info=True)
+                await self.enviar(websocket, proto.mensaje_error("Error obteniendo fichas elegibles"))
+                
+        except Exception as e:
+            logger.error(f"Error en procesar_debug_tres_dobles: {e}", exc_info=True)
+            await self.enviar(websocket, proto.mensaje_error("Error interno del servidor"))
     
     def detener(self):
         """Detiene el servidor"""

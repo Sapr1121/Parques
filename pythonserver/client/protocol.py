@@ -9,6 +9,8 @@ MSG_DESCONECTAR = "DESCONECTAR"
 MSG_LISTO = "LISTO"  # Cliente listo para empezar
 MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel   
 MSG_SOLICITAR_COLORES = "SOLICITAR_COLORES" 
+MSG_DEBUG_FORZAR_TRES_DOBLES = "DEBUG_FORZAR_TRES_DOBLES"  # ⭐ NUEVO
+MSG_ELEGIR_FICHA_PREMIO = "ELEGIR_FICHA_PREMIO"  # ⭐ NUEVO
 
 
 # ============================================
@@ -183,3 +185,38 @@ def mensaje_determinacion_ganador(ganador_nombre, ganador_color, orden_turnos):
                         ganador={"nombre": ganador_nombre, "color": ganador_color},
                         orden=orden_turnos,
                         mensaje=f"{ganador_nombre} ({ganador_color}) obtuvo el puntaje más alto y comenzará primero")
+
+# ⭐ NUEVO: Mensajes para premio de 3 dobles
+MSG_PREMIO_TRES_DOBLES = "PREMIO_TRES_DOBLES"
+MSG_ELEGIR_FICHA_PREMIO = "ELEGIR_FICHA_PREMIO"
+MSG_FICHA_A_META = "FICHA_A_META"
+
+def mensaje_premio_tres_dobles(nombre, fichas_elegibles):
+    """Notifica que el jugador ganó el premio de 3 dobles"""
+    return {
+        "tipo": MSG_PREMIO_TRES_DOBLES,
+        "nombre": nombre,
+        "fichas_elegibles": fichas_elegibles,
+        "mensaje": f"{nombre} sacó 3 dobles consecutivos y puede enviar UNA ficha a META"
+    }
+
+def mensaje_elegir_ficha_premio(ficha_id):
+    """Cliente envía la ficha elegida para enviar a META"""
+    return {
+        "tipo": MSG_ELEGIR_FICHA_PREMIO,
+        "ficha_id": ficha_id
+    }
+
+def mensaje_ficha_a_meta(nombre, color, ficha_id, desde, estado_anterior):
+    """Notifica que una ficha fue enviada a META por premio"""
+    return {
+        "tipo": MSG_FICHA_A_META,
+        "nombre": nombre,
+        "color": color,
+        "ficha_id": ficha_id,
+        "desde": desde,
+        "estado_anterior": estado_anterior
+    }
+
+def mensaje_debug_forzar_tres_dobles():
+    return {"tipo": MSG_DEBUG_FORZAR_TRES_DOBLES}
