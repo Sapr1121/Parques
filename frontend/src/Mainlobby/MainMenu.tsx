@@ -22,7 +22,7 @@ const MainMenu = () => {
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden p-4"
       style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}>
       
       {/* Partículas de fondo animadas */}
@@ -41,7 +41,7 @@ const MainMenu = () => {
       <div className="relative z-10 text-center w-full max-w-2xl">
         
         {/* Emociones de Intensamente como decoración */}
-        <div className="absolute -top-8 sm:-top-12 left-0 right-0 flex justify-center space-x-2 sm:space-x-4 text-4xl sm:text-6xl md:text-7xl opacity-90">
+        <div className="absolute -top-1 sm:-top-6 left-0 right-0 flex justify-center space-x-2 sm:space-x-4 text-4xl sm:text-6xl md:text-7xl opacity-90">
           <span className="animate-bounce" style={{ animationDelay: '0s', animationDuration: '2s' }}>😊</span>
           <span className="animate-bounce" style={{ animationDelay: '0.2s', animationDuration: '2s' }}>😢</span>
           <span className="animate-bounce" style={{ animationDelay: '0.4s', animationDuration: '2s' }}>😡</span>
