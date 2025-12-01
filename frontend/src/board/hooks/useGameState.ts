@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
 import type { 
   JugadorTablero, 
@@ -31,6 +31,7 @@ interface GameState {
   esDoble: boolean;
   doblesConsecutivos: number;
   dadosUsados: number[];
+  puedeRelanzar: boolean;
   
   // Estado de acción
   puedeTomarAccion: boolean;
@@ -83,6 +84,10 @@ export const useGameState = (
   const [esDoble, setEsDoble] = useState(false);
   const [doblesConsecutivos, setDoblesConsecutivos] = useState(0);
   const [dadosUsados, setDadosUsados] = useState<number[]>([]);
+  // Indica que el jugador consumió una tirada doble y tiene permiso para relanzar
+  const [puedeRelanzar, setPuedeRelanzar] = useState(false);
+  // Ref para leer el estado más reciente de dadosUsados dentro de closures
+  const dadosUsadosRef = useRef<number[]>([]);
   
   // Ficha seleccionada
   const [fichaSeleccionada, setFichaSeleccionada] = useState<{ color: ColorJugador; id: number } | null>(null);
@@ -111,7 +116,11 @@ export const useGameState = (
         // Resetear estado de dados si es un nuevo turno
         if (esMyTurno) {
           setDadosLanzados(false);
-          setDadosUsados([]);
+          setDadosUsados(() => {
+            dadosUsadosRef.current = [];
+            return [];
+          });
+          setPuedeRelanzar(false);
           setFichaSeleccionada(null);
         }
         break;
@@ -124,7 +133,12 @@ export const useGameState = (
         setSuma(msg.suma);
         setEsDoble(msg.es_doble);
         setDadosLanzados(true);
-        setDadosUsados([]);
+        setDadosUsados(() => {
+          dadosUsadosRef.current = [];
+          return [];
+        });
+        // Nueva tirada: cancelar cualquier permiso previo de relanzar
+        setPuedeRelanzar(false);
         
         // AUTOMATICO: Si es mi turno, son dobles, y TODAS las fichas están en cárcel
         // enviar SACAR_TODAS automáticamente (como el cliente Python)
@@ -213,7 +227,12 @@ export const useGameState = (
         break;
       }
     }
-  }, [lastMessage, miColor, esMiTurno, jugadores, send]);
+    
+    // Nota: no reseteamos los dados aquí de forma global. El servidor
+    // controla cuándo termina el turno (via mensajes `TURNO`/`TABLERO`).
+    // El cliente sólo actualizará `dadosLanzados` cuando reciba mensajes
+    // explícitos del servidor o cuando se consuman ambos dados localmente.
+  }, [lastMessage, miColor, esMiTurno, jugadores, send, turnoActual, miId]);
   
   // Procesar cola de mensajes (para mensajes que llegaron muy rápido)
   useEffect(() => {
@@ -245,7 +264,9 @@ export const useGameState = (
   
   // Calcular fichas movibles
   const calcularFichasMovibles = useCallback((): Array<{ color: ColorJugador; id: number; posicion: number }> => {
-    if (!esMiTurno || !dadosLanzados || !miColor) return [];
+    // Permitir calcular fichas movibles si es mi turno y hay dados lanzados
+    // o si tengo permiso para relanzar tras haber consumido dobles.
+    if (!esMiTurno || (!dadosLanzados && !puedeRelanzar) || !miColor) return [];
     
     const miJugador = jugadores.find(j => j.color === miColor);
     if (!miJugador) return [];
@@ -263,7 +284,7 @@ export const useGameState = (
     }
     
     return movibles;
-  }, [esMiTurno, dadosLanzados, miColor, jugadores]);
+  }, [esMiTurno, dadosLanzados, miColor, jugadores, puedeRelanzar]);
   
   // Calcular fichas en cárcel
   const calcularFichasEnCarcel = useCallback((): Array<{ color: ColorJugador; id: number }> => {
@@ -279,9 +300,23 @@ export const useGameState = (
   
   // Acciones
   const lanzarDados = useCallback(() => {
-    if (!esMiTurno || dadosLanzados) return;
+    // Permite lanzar si es mi turno y no hay dados activos,
+    // o si estoy en estado de relanzar por haber consumido dobles
+    if (!esMiTurno || (dadosLanzados && !puedeRelanzar)) return;
+
+    // Si venimos de un relanzar por dobles, limpiar estado local antes de lanzar
+    if (puedeRelanzar) {
+      // Preparamos para la nueva tirada: ocultar/invalidar dados actuales y limpiar usados
+      setDadosLanzados(false);
+      setDadosUsados(() => {
+        dadosUsadosRef.current = [];
+        return [];
+      });
+      setPuedeRelanzar(false);
+    }
+
     send({ tipo: 'LANZAR_DADOS' });
-  }, [esMiTurno, dadosLanzados, send]);
+  }, [esMiTurno, dadosLanzados, puedeRelanzar, send]);
   
   const sacarDeCarcel = useCallback(() => {
     if (!esMiTurno || !esDoble) return;
@@ -294,23 +329,67 @@ export const useGameState = (
   }, [esMiTurno, esDoble, send]);
   
   const moverFicha = useCallback((fichaId: number, dadoElegido: 1 | 2 | 3) => {
-    if (!esMiTurno || !dadosLanzados) return;
-    
-    // Verificar que el dado no haya sido usado
+    if (!esMiTurno || !dadosLanzados) {
+      console.warn('Movimiento no permitido: no es tu turno o no hay dados lanzados');
+      return;
+    }
+
+    // Verificar que el dado no haya sido usado (si no es la suma)
     if (dadoElegido !== 3 && dadosUsados.includes(dadoElegido)) {
       console.warn(`Dado ${dadoElegido} ya fue usado`);
       return;
     }
-    
+
+    console.log(`Enviando movimiento: fichaId=${fichaId}, dado=${dadoElegido}`);
     send({ tipo: 'MOVER_FICHA', ficha_id: fichaId, dado_elegido: dadoElegido });
-    
+
     // Registrar dado usado localmente
-    if (dadoElegido !== 3) {
-      setDadosUsados(prev => [...prev, dadoElegido]);
+    if (dadoElegido === 3) {
+      // Usar la suma consume ambos dados
+      setDadosUsados(() => {
+        const next = [1, 2];
+        dadosUsadosRef.current = next;
+        return next;
+      });
+    } else {
+      setDadosUsados(prev => {
+        const next = Array.from(new Set([...prev, dadoElegido]));
+        dadosUsadosRef.current = next;
+        return next;
+      });
     }
-    
+
+    // Si ambos dados ya fueron usados, decidir comportamiento local:
+    // - Si fueron dobles, permitir relanzar (limpiar estado de dados para que pueda lanzar otra vez)
+    // - Si no fueron dobles, marcar que no hay más acciones locales (el servidor dará el siguiente turno)
+    setTimeout(() => {
+      const usados = dadoElegido === 3 ? [1, 2] : Array.from(new Set([...dadosUsadosRef.current, dadoElegido]));
+      const ambosUsados = usados.includes(1) && usados.includes(2);
+
+      if (ambosUsados) {
+        if (esDoble) {
+          console.log('Dobles consumidos: habilitando relanzar.');
+          // Mantener los dados visibles (dadosLanzados = true) pero marcar que
+          // ambos ya fueron usados. El permiso de relanzar permitirá al jugador
+          // lanzar de nuevo cuando lo desee.
+          setDadosUsados(() => {
+            const next: number[] = [1, 2];
+            dadosUsadosRef.current = next;
+            return next;
+          });
+          setPuedeRelanzar(true);
+          // mantener esMiTurno true
+          setEsMiTurno(true);
+        } else {
+          console.log('Ambos dados usados, esperando actualización del servidor.');
+          setDadosLanzados(false);
+          setPuedeRelanzar(false);
+        }
+      }
+    }, 20);
+
     setFichaSeleccionada(null);
-  }, [esMiTurno, dadosLanzados, dadosUsados, send]);
+  }, [esMiTurno, dadosLanzados, dadosUsados, send, esDoble]);
   
   const seleccionarFicha = useCallback((color: ColorJugador, id: number) => {
     if (!esMiTurno || color !== miColor) return;
@@ -321,8 +400,8 @@ export const useGameState = (
     setFichaSeleccionada(null);
   }, []);
   
-  // Calcular si puede tomar acción
-  const puedeTomarAccion = esMiTurno && dadosLanzados;
+  // Calcular si puede tomar acción: hay dados disponibles o permiso para relanzar
+  const puedeTomarAccion = esMiTurno && (dadosLanzados || puedeRelanzar);
   
   // Calcular fichas movibles y en cárcel
   const fichasMovibles = calcularFichasMovibles();
@@ -345,6 +424,7 @@ export const useGameState = (
       doblesConsecutivos,
       dadosUsados,
       puedeTomarAccion,
+      puedeRelanzar,
       fichasMovibles,
       fichasEnCarcel,
       ultimaCaptura,

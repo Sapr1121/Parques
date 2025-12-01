@@ -9,7 +9,10 @@ import YellowJeil from '../assets/YellowJeil.jpeg';
 import Ficha, { GrupoFichas } from './components/Ficha';
 import DadosPanel from './components/DadosPanel';
 import MiniMenuDados from './components/MiniMenuDados';
+import SacadasHUD from './components/SacadasHUD';
+import VictoryPopup from './components/VictoryPopup';
 import { useGameState } from './hooks/useGameState';
+import { obtenerPosicionVisual } from './utils/posiciones';
 import type { ColorJugador, JugadorTablero, FichaEstado } from './types/gameTypes';
 
 const colors = {
@@ -81,13 +84,32 @@ const Casilla: React.FC<CasillaProps> = ({
   );
 };
 
-const Meta = ({ color }: { color: string }) => (
+interface MetaProps {
+  color: string;
+  fichas?: Array<{ id: number; color: ColorJugador; estado: FichaEstado }>;
+  fichaSeleccionada?: { color: ColorJugador; id: number } | null;
+  fichasSeleccionables?: Array<{ color: ColorJugador; id: number }>;
+  onFichaClick?: (color: ColorJugador, id: number, event?: React.MouseEvent) => void;
+}
+
+const Meta: React.FC<MetaProps> = ({ color, fichas = [], fichaSeleccionada, fichasSeleccionables = [], onFichaClick }) => (
   <div 
-    className="w-full h-full border-2 border-gray-800"
+    className="w-full h-full border-2 border-gray-800 relative"
     style={{ 
       backgroundColor: color
     }}
-  />
+  >
+    {fichas.length > 0 && (
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <GrupoFichas
+          fichas={fichas}
+          fichaSeleccionada={fichaSeleccionada}
+          fichasSeleccionables={fichasSeleccionables}
+          onFichaClick={onFichaClick}
+        />
+      </div>
+    )}
+  </div>
 );
 
 interface CarcelProps {
@@ -214,6 +236,24 @@ const Board: React.FC = () => {
   
   // Hook de estado del juego
   const { state, actions, fichaSeleccionada } = useGameState(miColor, miNombre, miId);
+
+  // Local state for victory popup
+  const [victoryVisible, setVictoryVisible] = React.useState(false);
+  const [victoryNombre, setVictoryNombre] = React.useState('');
+  const prevEnMetaRef = React.useRef<Record<string, number>>({});
+
+  // Detectar cuando algún jugador llega a 4 en_meta
+  React.useEffect(() => {
+    for (const j of state.jugadores) {
+      const prev = prevEnMetaRef.current[j.color] ?? 0;
+      if (j.en_meta >= 4 && prev < 4) {
+        // Nuevo ganador detectado
+        setVictoryNombre(j.nombre);
+        setVictoryVisible(true);
+      }
+      prevEnMetaRef.current[j.color] = j.en_meta;
+    }
+  }, [state.jugadores]);
   
   // Estado para el mini menú
   const [menuVisible, setMenuVisible] = useState(false);
@@ -227,6 +267,22 @@ const Board: React.FC = () => {
     return jugador.fichas
       .filter(f => f.estado === 'BLOQUEADO')
       .map(f => ({ id: f.id, color: f.color, estado: f.estado }));
+  };
+
+  // Obtener fichas que estén visualmente en una celda determinada (gridRow/gridColumn)
+  const getFichasEnVisual = (gridRow: string, gridColumn: string) => {
+    const fichas: Array<{ id: number; color: ColorJugador; estado: FichaEstado }> = [];
+
+    for (const jugador of state.jugadores) {
+      for (const ficha of jugador.fichas) {
+        const posVis = obtenerPosicionVisual(ficha.estado, ficha.posicion, ficha.posicion_meta, jugador.color, ficha.id);
+        if (posVis && posVis.gridRow === gridRow && posVis.gridColumn === gridColumn) {
+          fichas.push({ id: ficha.id, color: jugador.color, estado: ficha.estado });
+        }
+      }
+    }
+
+    return fichas;
   };
   
   // Obtener fichas en una casilla específica
@@ -335,6 +391,8 @@ const Board: React.FC = () => {
 
   return (
     <div className="flex items-start justify-center min-h-screen bg-gradient-to-br from-purple-100 to-indigo-100 p-4 gap-6">
+      {/* Victory popup (global) */}
+      <VictoryPopup visible={victoryVisible} nombre={victoryNombre} onClose={() => setVictoryVisible(false)} />
       
       {/* Panel izquierdo - Info de jugadores */}
       <div className="hidden lg:block">
@@ -374,31 +432,31 @@ const Board: React.FC = () => {
           <div style={{gridRow: '1', gridColumn: '11'}}><Casilla num={33} fichas={getFichasEnCasilla(32)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '2', gridColumn: '9'}}><Casilla num={36} fichas={getFichasEnCasilla(35)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '2', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '2', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('2','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '2', gridColumn: '11'}}><Casilla num={32} fichas={getFichasEnCasilla(31)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '3', gridColumn: '9'}}><Casilla num={37} fichas={getFichasEnCasilla(36)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '3', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '3', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('3','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '3', gridColumn: '11'}}><Casilla num={31} fichas={getFichasEnCasilla(30)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '4', gridColumn: '9'}}><Casilla num={38} fichas={getFichasEnCasilla(37)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '4', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '4', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('4','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '4', gridColumn: '11'}}><Casilla num={30} fichas={getFichasEnCasilla(29)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '5', gridColumn: '9'}}><Casilla num={39} bgColor={colors.rojo} fichas={getFichasEnCasilla(38)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '5', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '5', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('5','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '5', gridColumn: '11'}}><Casilla num={29} bgColor={colors.rojo} safe fichas={getFichasEnCasilla(28)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '6', gridColumn: '9'}}><Casilla num={40} fichas={getFichasEnCasilla(39)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '6', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '6', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('6','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '6', gridColumn: '11'}}><Casilla num={28} fichas={getFichasEnCasilla(27)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '7', gridColumn: '9'}}><Casilla num={41} fichas={getFichasEnCasilla(40)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '7', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '7', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('7','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '7', gridColumn: '11'}}><Casilla num={27} fichas={getFichasEnCasilla(26)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           <div style={{gridRow: '8', gridColumn: '9'}}><Casilla num={42} fichas={getFichasEnCasilla(41)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '8', gridColumn: '10'}}><Meta color={colors.rojo} /></div>
+          <div style={{gridRow: '8', gridColumn: '10'}}><Meta color={colors.rojo} fichas={getFichasEnVisual('8','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '8', gridColumn: '11'}}><Casilla num={26} fichas={getFichasEnCasilla(25)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           {/* ========== CARCEL AZUL (8x8) ========== */}
@@ -423,13 +481,13 @@ const Board: React.FC = () => {
           <div style={{gridRow: '9', gridColumn: '1'}}><Casilla num={50} fichas={getFichasEnCasilla(49)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           {/* Metas verdes */}
-          <div style={{gridRow: '10', gridColumn: '8'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '7'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '6'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '5'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '4'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '3'}}><Meta color={colors.verde} /></div>
-          <div style={{gridRow: '10', gridColumn: '2'}}><Meta color={colors.verde} /></div>
+          <div style={{gridRow: '10', gridColumn: '8'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','8')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '7'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','7')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '6'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','6')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '5'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','5')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '4'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','4')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '3'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','3')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '2'}}><Meta color={colors.verde} fichas={getFichasEnVisual('10','2')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '10', gridColumn: '1'}}><Casilla num={51} safe fichas={getFichasEnCasilla(50)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           
           {/* Columna inferior verde */}
@@ -456,13 +514,13 @@ const Board: React.FC = () => {
           <div style={{gridRow: '9', gridColumn: '19'}}><Casilla num={18} fichas={getFichasEnCasilla(17)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           {/* Metas azules */}
-          <div style={{gridRow: '10', gridColumn: '12'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '13'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '14'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '15'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '16'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '17'}}><Meta color={colors.azul} /></div>
-          <div style={{gridRow: '10', gridColumn: '18'}}><Meta color={colors.azul} /></div>
+          <div style={{gridRow: '10', gridColumn: '12'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','12')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '13'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','13')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '14'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','14')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '15'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','15')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '16'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','16')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '17'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','17')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
+          <div style={{gridRow: '10', gridColumn: '18'}}><Meta color={colors.azul} fichas={getFichasEnVisual('10','18')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '10', gridColumn: '19'}}><Casilla num={17} safe fichas={getFichasEnCasilla(16)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           {/* Columna inferior azul */}
@@ -488,31 +546,31 @@ const Board: React.FC = () => {
           
           {/* ========== BRAZO INFERIOR (AMARILLO) ========== */}
           <div style={{gridRow: '12', gridColumn: '9'}}><Casilla num={60} fichas={getFichasEnCasilla(59)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '12', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '12', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('12','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '12', gridColumn: '11'}}><Casilla num={8} fichas={getFichasEnCasilla(7)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '13', gridColumn: '9'}}><Casilla num={61} fichas={getFichasEnCasilla(60)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '13', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '13', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('13','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '13', gridColumn: '11'}}><Casilla num={7} fichas={getFichasEnCasilla(6)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '14', gridColumn: '9'}}><Casilla num={62} fichas={getFichasEnCasilla(61)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '14', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '14', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('14','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '14', gridColumn: '11'}}><Casilla num={6} fichas={getFichasEnCasilla(5)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '15', gridColumn: '9'}}><Casilla num={63} bgColor={colors.amarillo} safe fichas={getFichasEnCasilla(62)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '15', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '15', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('15','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '15', gridColumn: '11'}}><Casilla num={5} bgColor={colors.amarillo} fichas={getFichasEnCasilla(4)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '16', gridColumn: '9'}}><Casilla num={64} fichas={getFichasEnCasilla(63)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '16', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '16', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('16','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '16', gridColumn: '11'}}><Casilla num={4} fichas={getFichasEnCasilla(3)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '17', gridColumn: '9'}}><Casilla num={65} fichas={getFichasEnCasilla(64)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '17', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '17', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('17','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '17', gridColumn: '11'}}><Casilla num={3} fichas={getFichasEnCasilla(2)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '18', gridColumn: '9'}}><Casilla num={66} fichas={getFichasEnCasilla(65)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
-          <div style={{gridRow: '18', gridColumn: '10'}}><Meta color={colors.amarillo} /></div>
+          <div style={{gridRow: '18', gridColumn: '10'}}><Meta color={colors.amarillo} fichas={getFichasEnVisual('18','10')} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
           <div style={{gridRow: '18', gridColumn: '11'}}><Casilla num={2} fichas={getFichasEnCasilla(1)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
 
           <div style={{gridRow: '19', gridColumn: '9'}}><Casilla num={67} fichas={getFichasEnCasilla(66)} fichaSeleccionada={fichaSeleccionada} fichasSeleccionables={fichasSeleccionables} onFichaClick={handleFichaClick} /></div>
@@ -535,6 +593,13 @@ const Board: React.FC = () => {
       
       {/* Panel derecho - Dados y controles */}
       <div>
+        {/* HUD de fichas sacadas para el jugador */}
+        <SacadasHUD
+          count={state.jugadores.find(j => j.color === miColor)?.en_meta ?? 0}
+          playerName={miNombre}
+          color={miColor ?? 'gray'}
+        />
+
         <DadosPanel
           dado1={state.dado1}
           dado2={state.dado2}
@@ -544,6 +609,7 @@ const Board: React.FC = () => {
           dadosUsados={state.dadosUsados}
           esMiTurno={state.esMiTurno}
           puedeTomarAccion={state.puedeTomarAccion}
+          puedeRelanzar={state.puedeRelanzar}
           fichasEnCarcel={state.fichasEnCarcel.length}
           fichaSeleccionada={fichaSeleccionada}
           onLanzarDados={actions.lanzarDados}
@@ -583,6 +649,16 @@ const Board: React.FC = () => {
         dado2Usado={state.dadosUsados.includes(2)}
         fichaColor={fichaParaMenu?.color || 'rojo'}
         fichaId={fichaParaMenu?.id || 0}
+        fichaEstado={
+          fichaParaMenu
+            ? (state.jugadores.find(j => j.color === fichaParaMenu.color)?.fichas.find(f => f.id === fichaParaMenu.id)?.estado)
+            : undefined
+        }
+        posicionMeta={
+          fichaParaMenu
+            ? (state.jugadores.find(j => j.color === fichaParaMenu.color)?.fichas.find(f => f.id === fichaParaMenu.id)?.posicion_meta)
+            : undefined
+        }
         onSeleccionarDado={handleSeleccionarDado}
         onCerrar={cerrarMenu}
       />

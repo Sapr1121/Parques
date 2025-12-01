@@ -12,26 +12,30 @@ const DiceRoller: React.FC<DiceRollerProps> = ({ onRoll, disabled }) => {
   const handleRoll = () => {
     if (disabled || rolling) return;
     setRolling(true);
-    
-    // Animación de dados girando
-    let animationCount = 0;
-    const animationInterval = setInterval(() => {
-      setDice([
-        Math.floor(Math.random() * 6) + 1,
-        Math.floor(Math.random() * 6) + 1
-      ]);
-      animationCount++;
-      if (animationCount >= 10) {
-        clearInterval(animationInterval);
-        
-        // Resultado final
-        const dado1 = Math.floor(Math.random() * 6) + 1;
-        const dado2 = Math.floor(Math.random() * 6) + 1;
-        setDice([dado1, dado2]);
-        setRolling(false);
-        onRoll(dado1); // Enviamos dado1, el componente padre genera dado2
-      }
-    }, 80);
+
+    try {
+      let animationCount = 0;
+      const animationInterval = setInterval(() => {
+        setDice([
+          Math.floor(Math.random() * 6) + 1,
+          Math.floor(Math.random() * 6) + 1,
+        ]);
+        animationCount++;
+        if (animationCount >= 10) {
+          clearInterval(animationInterval);
+
+          // Resultado final
+          const dado1 = Math.floor(Math.random() * 6) + 1;
+          const dado2 = Math.floor(Math.random() * 6) + 1;
+          setDice([dado1, dado2]);
+          setRolling(false);
+          onRoll(dado1); // Enviamos dado1, el componente padre genera dado2
+        }
+      }, 80);
+    } catch (error) {
+      console.error('Error al tirar los dados:', error);
+      setRolling(false); // Asegurar que el estado se restablezca
+    }
   };
 
   // Emoji de dado según valor

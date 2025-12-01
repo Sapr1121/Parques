@@ -11,6 +11,7 @@ interface DadosPanelProps {
   dadosUsados: number[];
   esMiTurno: boolean;
   puedeTomarAccion: boolean;
+  puedeRelanzar: boolean;
   fichasEnCarcel: number;
   fichaSeleccionada: { color: ColorJugador; id: number } | null;
   onLanzarDados: () => void;
@@ -79,6 +80,7 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
   dadosUsados,
   esMiTurno,
   puedeTomarAccion,
+  puedeRelanzar,
   fichasEnCarcel,
   fichaSeleccionada,
   onLanzarDados,
@@ -89,7 +91,7 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
 }) => {
   const dado1Usado = dadosUsados.includes(1);
   const dado2Usado = dadosUsados.includes(2);
-  const puedeLanzar = esMiTurno && !dadosLanzados;
+  const puedeLanzar = esMiTurno && (!dadosLanzados || puedeRelanzar);
   // Puede sacar de cárcel si es mi turno, hay dados, son dobles Y hay fichas en cárcel
   const puedeSacarCarcel = esMiTurno && dadosLanzados && esDoble && fichasEnCarcel > 0;
   // Sacar TODAS: cuando TODAS las fichas (4) están en cárcel y son dobles
@@ -114,6 +116,11 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
 
       {/* Dados */}
       <div className="flex flex-col items-center gap-4">
+        {puedeRelanzar && (
+          <div className="w-full text-center text-sm text-green-700 font-bold">
+            🎲 Dobles usados: puedes volver a lanzar
+          </div>
+        )}
         {dadosLanzados ? (
           <>
             {/* Dados visuales */}
@@ -180,7 +187,10 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
           {/* Botón Lanzar Dados */}
           {puedeLanzar && (
             <button
-              onClick={onLanzarDados}
+              onClick={() => {
+                onLanzarDados();
+                console.log('🎲 Dados lanzados, verificando estado...');
+              }}
               className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-500 
                          text-white font-bold rounded-xl shadow-lg
                          hover:from-green-600 hover:to-emerald-600
