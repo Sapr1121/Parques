@@ -172,11 +172,20 @@ class ParchisServer:
                         conectados = len(self.game_manager.jugadores)
                         await self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES))
                         
-                        # Mensajes de admin
-                        if es_admin:
+                        # ⭐ NUEVO: Inicio automático con 4 jugadores
+                        if conectados == proto.MAX_JUGADORES:
+                            logger.info(f"🎊 Se alcanzó el máximo de jugadores ({proto.MAX_JUGADORES}). Iniciando automáticamente...")
+                            await self.broadcast(proto.mensaje_info(
+                                f"¡Sala completa con {proto.MAX_JUGADORES} jugadores! Iniciando partida automáticamente..."
+                            ))
+                            await asyncio.sleep(1)  # Breve pausa para que los jugadores lean el mensaje
+                            await self.iniciar_determinacion()
+                        # Mensajes de admin (solo si no se inició automáticamente)
+                        elif es_admin:
                             await self.enviar(websocket, proto.mensaje_info(
                                 "Eres el administrador. Para iniciar la partida envía MSG_LISTO. "
-                                f"Se requiere al menos {proto.MIN_JUGADORES} jugadores.", 
+                                f"Se requiere al menos {proto.MIN_JUGADORES} jugadores. "
+                                f"Con {proto.MAX_JUGADORES} jugadores se inicia automáticamente.", 
                                 es_admin=True
                             ))
                             await self.broadcast(proto.mensaje_info(

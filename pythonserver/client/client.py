@@ -454,7 +454,8 @@ mostrar_info_sincronizacion()
             requeridos = mensaje.get("requeridos", proto.MIN_JUGADORES)
             self.conectados = conectados
             self.requeridos = requeridos
-            print(f"\n⏳ Esperando jugadores... ({conectados}/{requeridos})")
+            # Mostrar como (X/4) para indicar el máximo de jugadores
+            print(f"\n⏳ Esperando jugadores... ({conectados}/{proto.MAX_JUGADORES})")
 
         elif tipo == proto.MSG_INICIO_JUEGO:
             self.juego_iniciado = True
@@ -1128,9 +1129,9 @@ mostrar_info_sincronizacion()
                 conectados = getattr(self, "conectados", 0)
                 requeridos = getattr(self, "requeridos", proto.MIN_JUGADORES)
 
-                # 🔧 ARREGLAR: Mostrar número correcto de jugadores
+                # 🔧 ARREGLAR: Mostrar número correcto de jugadores (X/4)
                 if (conectados != self._last_conectados) or (requeridos != self._last_requeridos):
-                    print(f"\nConectados: {conectados} / {requeridos}")  # ← CAMBIADO
+                    print(f"\nConectados: {conectados} / {proto.MAX_JUGADORES}")  # Mostrar el máximo
                     self._last_conectados = conectados
                     self._last_requeridos = requeridos
 
@@ -1138,7 +1139,8 @@ mostrar_info_sincronizacion()
                     if conectados < proto.MIN_JUGADORES:
                         faltan = proto.MIN_JUGADORES - conectados
                         if self._last_missing != faltan:
-                            print(f"(No puedes iniciar aún: faltan {faltan} jugador(es))")
+                            print(f"(Mínimo {proto.MIN_JUGADORES} jugadores para iniciar. Faltan {faltan} jugador(es))")
+                            print(f"(Con {proto.MAX_JUGADORES} jugadores se inicia automáticamente)")
                             self._last_missing = faltan
                         await asyncio.sleep(0.5)
                         continue
@@ -1146,7 +1148,10 @@ mostrar_info_sincronizacion()
                     self._last_missing = None
                     
                     # 🆕 MOSTRAR PROMPT CADA VEZ QUE HAY SUFICIENTES JUGADORES
-                    print(f"\n✅ Suficientes jugadores conectados ({conectados}/{requeridos})")
+                    if conectados < proto.MAX_JUGADORES:
+                        print(f"\n✅ Suficientes jugadores conectados ({conectados}/{proto.MAX_JUGADORES})")
+                        print(f"💡 Puedes iniciar ahora o esperar hasta {proto.MAX_JUGADORES} jugadores para inicio automático")
+                    # Si llegó a 4, no mostrar nada porque inicia automáticamente
                     
                     try:
                         loop = asyncio.get_event_loop()
