@@ -893,8 +893,17 @@ class ParchisServer:
                 return
             
             ficha_id = mensaje.get("ficha_id")
-            if ficha_id is None:
-                await self.enviar(websocket, proto.mensaje_error("ID de ficha no especificado"))
+            if ficha_id is None or ficha_id < 0:
+                # Cliente envió -1 indicando error de input (ValueError)
+                if ficha_id == -1:
+                    await self.enviar(websocket, proto.mensaje_error("Entrada inválida, por favor ingresa un número"))
+                else:
+                    await self.enviar(websocket, proto.mensaje_error("ID de ficha no especificado"))
+                
+                # Reenviar mensaje de premio para retry
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                if fichas_elegibles:
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
                 return
             
             logger.info(f"🏆 {info['nombre']} eligió la ficha {ficha_id} para enviar a META")
@@ -904,7 +913,14 @@ class ParchisServer:
             
             if not exito:
                 error_msg = resultado.get("error", "Error aplicando premio")
+                logger.warning(f"❌ Elección inválida de {info['nombre']}: {error_msg}")
                 await self.enviar(websocket, proto.mensaje_error(error_msg))
+                
+                # ⭐ CRÍTICO: Reenviar mensaje de premio para que pueda reintentar
+                fichas_elegibles = self.game_manager.obtener_fichas_elegibles_para_premio(websocket)
+                if fichas_elegibles:
+                    await self.enviar(websocket, proto.mensaje_premio_tres_dobles(info['nombre'], fichas_elegibles))
+                    logger.info(f"🔄 Reenviado mensaje de premio a {info['nombre']} para retry")
                 return
             
             # Notificar a todos el premio aplicado

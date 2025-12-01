@@ -557,8 +557,8 @@ class GameManager:
         """Lanza los dados - DEBE LLAMARSE CON LOCK EXTERNO"""
         logger.debug("🎲 Generando dados...")
         
-        self.ultimo_dado1 = random.randint(1, 6)
-        self.ultimo_dado2 = random.randint(1, 6)
+        self.ultimo_dado1 = random.randint(4, 6)
+        self.ultimo_dado2 = random.randint(4, 6)
         self.ultima_suma = self.ultimo_dado1 + self.ultimo_dado2
         self.ultimo_es_doble = self.ultimo_dado1 == self.ultimo_dado2
         self.dados_lanzados = True
@@ -617,6 +617,10 @@ class GameManager:
         with self.lock:
             logger.debug("🔒 Intentando sacar todas las fichas de cárcel automáticamente")
             
+            # ⭐ NUEVO: Si hay premio activo, rechazar
+            if self.premio_tres_dobles:
+                return False, "Debes elegir una ficha para el premio de 3 dobles primero"
+            
             if socket_cliente not in self.clientes:
                 return False, "Cliente no válido"
             
@@ -665,6 +669,10 @@ class GameManager:
         """Saca UNA ficha de la cárcel cuando sale doble"""
         with self.lock:
             logger.debug("🔒 Intentando sacar de cárcel")
+            
+            # ⭐ NUEVO: Si hay premio activo, rechazar
+            if self.premio_tres_dobles:
+                return False, "Debes elegir una ficha para el premio de 3 dobles primero"
             
             if socket_cliente not in self.clientes:
                 return False, "Cliente no válido"
@@ -721,6 +729,10 @@ class GameManager:
         """
         with self.lock:
             logger.debug(f"Procesando movimiento de ficha {ficha_id} con dado {dado_elegido}")
+            
+            # ⭐ NUEVO: Si hay premio activo, rechazar movimiento normal
+            if self.premio_tres_dobles:
+                return False, "Debes elegir una ficha para el premio de 3 dobles primero (usa MSG_ELEGIR_FICHA_PREMIO)"
             
             # Validaciones básicas
             if not self.es_turno_de(socket_cliente):
@@ -1165,13 +1177,32 @@ class GameManager:
             nombre = self.clientes[socket_cliente]["nombre"]
             color = self.clientes[socket_cliente]["color"]
             
-            # Validar ficha_id
+            # ⭐ NUEVO: Obtener fichas elegibles primero
+            fichas_elegibles = []
+            for idx, f in enumerate(jugador.fichas):
+                if f.estado == proto.ESTADO_EN_JUEGO:
+                    fichas_elegibles.append(idx)
+            
+            # Si no hay fichas elegibles
+            if not fichas_elegibles:
+                return False, {"error": "No tienes fichas elegibles (todas en cárcel o meta)"}
+            
+            # ⭐ CRÍTICO: Validar que ficha_id esté en la lista de elegibles
+            logger.info(f"🔍 Validando ficha_id={ficha_id}, elegibles={fichas_elegibles}")
+            
+            if ficha_id not in fichas_elegibles:
+                # Mantener premio activo para que pueda reintentar
+                logger.warning(f"❌ Ficha {ficha_id} no está en la lista de elegibles: {fichas_elegibles}")
+                nombres_fichas = ', '.join([f"#{f + 1}" for f in fichas_elegibles])
+                return False, {"error": f"Ficha #{ficha_id + 1} no es elegible. Fichas disponibles: {nombres_fichas}"}
+            
+            # Validar rango (redundante pero por seguridad)
             if ficha_id < 0 or ficha_id >= len(jugador.fichas):
                 return False, {"error": "Ficha inválida"}
             
             ficha = jugador.fichas[ficha_id]
             
-            # Validar que la ficha esté en juego (EN_JUEGO es el único estado válido aparte de BLOQUEADO y META)
+            # Validar que la ficha esté en juego
             if ficha.estado != proto.ESTADO_EN_JUEGO:
                 return False, {"error": "Solo puedes enviar a META fichas que estén en el tablero"}
             

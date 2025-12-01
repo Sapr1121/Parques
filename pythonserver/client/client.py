@@ -702,45 +702,52 @@ mostrar_info_sincronizacion()
             print(f"\n{mensaje_texto}")
             print("\n📋 Fichas elegibles para enviar a META:")
             
-            for ficha in fichas_elegibles:
+            for idx, ficha in enumerate(fichas_elegibles):
                 ficha_id = ficha['id']
                 posicion = ficha.get('posicion', '?')
                 estado = ficha.get('estado', '')
                 
                 if estado == "EN_JUEGO":
-                    print(f"   {ficha_id + 1}. Ficha en casilla {posicion + 1}")
+                    print(f"   {idx + 1}. Ficha #{ficha_id + 1} en casilla {posicion + 1}")
                 else:
-                    print(f"   {ficha_id + 1}. Ficha (estado: {estado})")
+                    print(f"   {idx + 1}. Ficha #{ficha_id + 1} (estado: {estado})")
             
             print("\n" + "="*60)
             
-            # Solicitar elección al usuario
+            # Solicitar elección al usuario y enviar al servidor
+            # El servidor validará y reenviará este mensaje si la selección es inválida
             try:
                 loop = asyncio.get_event_loop()
                 seleccion = await loop.run_in_executor(
                     None,
                     input,
-                    f"\n🏆 Elige una ficha para enviar a META (1-{len(fichas_elegibles)}): "
+                    f"\n🏆 Elige una opción (1-{len(fichas_elegibles)}): "
                 )
-                ficha_num = int(seleccion)
+                opcion_num = int(seleccion)
                 
-                if 1 <= ficha_num <= len(fichas_elegibles):
-                    ficha_elegida = fichas_elegibles[ficha_num - 1]
-                    ficha_id = ficha_elegida['id']
-                    
-                    print(f"\n✅ Enviando ficha {ficha_id + 1} a META...")
-                    await self.enviar(proto.mensaje_elegir_ficha_premio(ficha_id))
-                    
-                    # Esperar respuesta
-                    await asyncio.sleep(1.0)
-                    await self.procesar_mensajes()
-                else:
-                    print("⚠️ Número de ficha inválido")
+                # Validar que la opción esté en el rango
+                if opcion_num < 1 or opcion_num > len(fichas_elegibles):
+                    print(f"⚠️ Opción fuera de rango (debe ser 1-{len(fichas_elegibles)})")
+                    await self.enviar(proto.mensaje_elegir_ficha_premio(-1))
+                    return
+                
+                # Obtener el ID real de la ficha desde la lista
+                ficha_id_real = fichas_elegibles[opcion_num - 1]['id']
+                
+                print(f"\n✅ Enviando ficha #{ficha_id_real + 1} a META...")
+                await self.enviar(proto.mensaje_elegir_ficha_premio(ficha_id_real))
+                
+                # Esperar respuesta del servidor
+                await asyncio.sleep(0.5)
+                await self.procesar_mensajes()
                     
             except ValueError:
-                print("⚠️ Entrada inválida")
+                print("⚠️ Debes ingresar un número válido.")
+                # Reenviar solicitud al servidor para reintentar
+                await self.enviar(proto.mensaje_elegir_ficha_premio(-1))  # -1 indica error de input
             except Exception as e:
-                print(f"❌ Error eligiendo ficha: {e}")
+                print(f"❌ Error: {e}.")
+                await self.enviar(proto.mensaje_elegir_ficha_premio(-1))
         
         elif tipo == proto.MSG_INFO:
             info_text = mensaje.get('mensaje', '')
