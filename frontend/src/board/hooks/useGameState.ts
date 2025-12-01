@@ -45,6 +45,10 @@ interface GameState {
   // Juego
   juegoTerminado: boolean;
   ganador: { nombre: string; color: ColorJugador } | null;
+  
+  // ⭐ NUEVO: Premio de 3 dobles
+  premioTresDoblesActivo: boolean;
+  fichasElegiblesPremio: Array<{ id: number; color: ColorJugador; posicion: number }>;
 }
 
 // Acciones disponibles
@@ -99,6 +103,10 @@ export const useGameState = (
   // Juego terminado
   const [juegoTerminado, setJuegoTerminado] = useState(false);
   const [ganador, setGanador] = useState<{ nombre: string; color: ColorJugador } | null>(null);
+  
+  // ⭐ NUEVO: Premio de 3 dobles
+  const [premioTresDoblesActivo, setPremioTresDoblesActivo] = useState(false);
+  const [fichasElegiblesPremio, setFichasElegiblesPremio] = useState<Array<{ id: number; color: ColorJugador; posicion: number }>>([]);
   
   // Procesar mensajes del servidor
   useEffect(() => {
@@ -177,6 +185,14 @@ export const useGameState = (
           }))
         });
         
+        // ⭐ Si el popup de premio estaba activo, cerrarlo ahora
+        // (el servidor procesó la selección y envió el tablero actualizado)
+        if (premioTresDoblesActivo) {
+          console.log('🏆 Cerrando popup de premio - selección procesada');
+          setPremioTresDoblesActivo(false);
+          setFichasElegiblesPremio([]);
+        }
+        
         // Forzar una copia profunda para asegurar que React detecte el cambio
         const jugadoresActualizados = JSON.parse(JSON.stringify(msg.jugadores));
         setJugadores(jugadoresActualizados);
@@ -218,6 +234,21 @@ export const useGameState = (
       case 'CAPTURA': {
         const capturado = lastMessage.capturado;
         setUltimaCaptura(capturado);
+        break;
+      }
+      
+      case 'PREMIO_TRES_DOBLES': {
+        // ⭐ El jugador sacó 3 dobles y debe elegir una ficha para enviar a META
+        console.log('🏆 Premio de 3 dobles activado!', lastMessage);
+        const fichasElegibles = lastMessage.fichas_elegibles || [];
+        setFichasElegiblesPremio(fichasElegibles.map((f: any) => ({
+          id: f.id,
+          color: f.color,
+          posicion: f.posicion
+        })));
+        setPremioTresDoblesActivo(true);
+        // Deseleccionar cualquier ficha seleccionada
+        setFichaSeleccionada(null);
         break;
       }
       
@@ -430,7 +461,9 @@ export const useGameState = (
       ultimaCaptura,
       ultimoMovimiento,
       juegoTerminado,
-      ganador
+      ganador,
+      premioTresDoblesActivo,
+      fichasElegiblesPremio
     },
     actions: {
       lanzarDados,

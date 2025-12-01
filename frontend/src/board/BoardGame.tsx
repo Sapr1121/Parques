@@ -11,7 +11,9 @@ import DadosPanel from './components/DadosPanel';
 import MiniMenuDados from './components/MiniMenuDados';
 import SacadasHUD from './components/SacadasHUD';
 import VictoryPopup from './components/VictoryPopup';
+import PremioPopup from './components/PremioPopup';
 import { useGameState } from './hooks/useGameState';
+import { useSocket } from '../contexts/SocketContext';
 import { obtenerPosicionVisual } from './utils/posiciones';
 import type { ColorJugador, JugadorTablero, FichaEstado } from './types/gameTypes';
 
@@ -236,6 +238,19 @@ const Board: React.FC = () => {
   
   // Hook de estado del juego
   const { state, actions, fichaSeleccionada } = useGameState(miColor, miNombre, miId);
+  
+  // ⭐ NUEVO: Hook para enviar mensajes al servidor
+  const { send } = useSocket();
+  
+  // ⭐ NUEVO: Función para manejar selección de ficha en premio de 3 dobles
+  const handleSeleccionarFichaPremio = (fichaId: number) => {
+    console.log('🏆 Enviando selección de ficha para premio:', fichaId);
+    send({
+      tipo: 'ELEGIR_FICHA_PREMIO',
+      ficha_id: fichaId
+    });
+    // El servidor responderá y cambiará el estado
+  };
 
   // Local state for victory popup
   const [victoryVisible, setVictoryVisible] = React.useState(false);
@@ -393,6 +408,13 @@ const Board: React.FC = () => {
     <div className="flex items-start justify-center min-h-screen bg-gradient-to-br from-purple-100 to-indigo-100 p-4 gap-6">
       {/* Victory popup (global) */}
       <VictoryPopup visible={victoryVisible} nombre={victoryNombre} onClose={() => setVictoryVisible(false)} />
+      
+      {/* ⭐ NUEVO: Popup de premio por 3 dobles */}
+      <PremioPopup
+        visible={state.premioTresDoblesActivo}
+        fichasElegibles={state.fichasElegiblesPremio}
+        onSeleccionarFicha={handleSeleccionarFichaPremio}
+      />
       
       {/* Panel izquierdo - Info de jugadores */}
       <div className="hidden lg:block">
