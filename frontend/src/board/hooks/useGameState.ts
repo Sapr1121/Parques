@@ -216,6 +216,13 @@ export const useGameState = (
           accion: msg.accion
         });
         
+        // ⭐ Si el popup de premio estaba activo, cerrarlo
+        if (premioTresDoblesActivo) {
+          console.log('🏆 Cerrando popup de premio - movimiento confirmado');
+          setPremioTresDoblesActivo(false);
+          setFichasElegiblesPremio([]);
+        }
+        
         setUltimoMovimiento({ desde: msg.desde, hasta: msg.hasta });
         setFichaSeleccionada(null);
         
@@ -255,6 +262,17 @@ export const useGameState = (
       case 'VICTORIA': {
         setJuegoTerminado(true);
         setGanador({ nombre: lastMessage.ganador, color: lastMessage.color });
+        break;
+      }
+      
+      case 'INFO': {
+        // ⭐ Si recibimos un INFO mientras el premio está activo, probablemente 
+        // es la confirmación del servidor (ej: "X envió su ficha a META con el premio")
+        if (premioTresDoblesActivo) {
+          console.log('🏆 Cerrando popup de premio - INFO recibido del servidor');
+          setPremioTresDoblesActivo(false);
+          setFichasElegiblesPremio([]);
+        }
         break;
       }
     }

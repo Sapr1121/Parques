@@ -21,14 +21,14 @@ const PremioPopup: React.FC<PremioPopupProps> = ({
 
   return (
     <>
-      {/* Overlay muy transparente que bloquea clicks pero deja ver claramente el tablero */}
+      {/* Overlay invisible que solo bloquea clicks - NO oscurece nada */}
       <div 
-        className="fixed inset-0 bg-black bg-opacity-10 z-40 pointer-events-auto"
-        style={{ backdropFilter: 'blur(1px)' }}
+        className="fixed inset-0 z-40 pointer-events-auto"
+        style={{ backgroundColor: 'transparent' }}
       />
       
       {/* Popup compacto en esquina superior derecha */}
-      <div className="fixed top-4 right-4 z-50 w-96">
+      <div className="fixed top-4 right-4 z-50 w-96 pointer-events-auto">
         <div 
           className="bg-gradient-to-br from-yellow-400 via-orange-400 to-red-500 rounded-2xl shadow-2xl p-4 animate-slide-in"
           style={{
