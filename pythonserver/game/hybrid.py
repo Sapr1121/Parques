@@ -176,14 +176,37 @@ class LobbyManager:
         return secrets.token_hex(length // 2).upper()
     
     def obtener_ip_local(self):
-        """Obtiene la IP local de la máquina"""
+        """Obtiene la IP local de la máquina accesible en LAN"""
         try:
+            # Método 1: Usando conexión UDP a un servidor externo
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.1)
+            # Conectar a un servidor público (no envía datos, solo determina ruta)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
-            return ip
-        except Exception:
+            
+            # Verificar que sea una IP LAN válida (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+            if ip.startswith(("192.168.", "10.", "172.")) and not ip.startswith("127."):
+                return ip
+            
+            # Método 2: Si el anterior falló, buscar en todas las interfaces
+            hostname = socket.gethostname()
+            ip_list = socket.gethostbyname_ex(hostname)[2]
+            
+            # Filtrar IPs LAN válidas (excluir localhost y IPs de docker/virtual)
+            for ip in ip_list:
+                if ip.startswith(("192.168.", "10.")) and not ip.startswith("127."):
+                    return ip
+            
+            # Si no encontró nada, devolver la primera IP no-localhost
+            for ip in ip_list:
+                if not ip.startswith("127."):
+                    return ip
+            
+            return "127.0.0.1"
+        except Exception as e:
+            print(f"⚠️  Error detectando IP local: {e}")
             return "127.0.0.1"
     
     async def verificar_servidor_registro(self):
@@ -360,6 +383,16 @@ class LobbyManager:
         puerto = int(puerto_input) if puerto_input.isdigit() else self.puerto_default
         
         ip_local = self.obtener_ip_local()
+        
+        # ⭐ NUEVO: Permitir al usuario verificar/cambiar la IP
+        print(f"\n📍 IP detectada automáticamente: {ip_local}")
+        confirmar = input("   ¿Es correcta esta IP? (Enter=Sí, o ingresa la IP correcta): ").strip()
+        if confirmar and confirmar.lower() not in ['s', 'si', 'sí', 'yes', 'y']:
+            # Si ingresó algo que no es confirmación, asumimos que es la IP correcta
+            if confirmar.count('.') == 3:  # Validación básica de formato IP
+                ip_local = confirmar
+                print(f"   ✅ Usando IP personalizada: {ip_local}")
+        
         self.hex_code = self.generar_codigo_hex()
         
         print("\n" + "⏳"*35)
@@ -375,6 +408,8 @@ class LobbyManager:
             "ip_address": ip_local
         }
         
+        print(f"\n🔍 DEBUG: Registrando sala con IP={ip_local}, Puerto={puerto}")
+        
         response = await self.comunicar_con_registro(mensaje_registro)
         
         if response.get("status") == "success":
@@ -383,7 +418,8 @@ class LobbyManager:
             print("─"*70)
             print(f"\n🎫 CÓDIGO DE SALA: {self.hex_code}")
             print(f"👤 Tu nombre: {nombre}")
-            print(f"📍 IP: {ip_local}:{puerto}")
+            print(f"📍 IP REGISTRADA: {ip_local}:{puerto}")
+            print(f"\n💡 Otros jugadores deben usar el código: {self.hex_code}")
             print("\n" + "─"*70)
             print("💡 INSTRUCCIONES PARA OTROS JUGADORES:")
             print(f"   1. Ejecutar el juego")
@@ -434,7 +470,8 @@ class LobbyManager:
             
             print(f"\n✅ Sala encontrada!")
             print(f"   🏠 Host: {host_name}")
-            print(f"   📍 {host_ip}:{host_port}")
+            print(f"   📍 IP del servidor: {host_ip}:{host_port}")
+            print(f"\n🔍 DEBUG: Intentando conectar a {host_ip}:{host_port}")
             
             await self.iniciar_como_cliente(nombre, host_ip, host_port)
         else:
