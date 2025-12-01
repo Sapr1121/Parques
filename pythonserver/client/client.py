@@ -881,8 +881,17 @@ mostrar_info_sincronizacion()
             
         print("\n🎯 FICHAS EN CAMINO A META:")
         if fichas_en_camino_meta:
+            # Mapeo correcto de colores a iniciales de casillas de meta
+            inicial_meta = {
+                'rojo': 'r',
+                'verde': 'v', 
+                'amarillo': 'a',
+                'azul': 'B'  # ⭐ Mayúscula para diferenciar de amarillo
+            }
+            inicial = inicial_meta.get(self.mi_color, self.mi_color[0])
+            
             for ficha in fichas_en_camino_meta:
-                casilla_actual = f"s{self.mi_color[0]}{ficha['posicion_meta'] + 1}"
+                casilla_actual = f"s{inicial}{ficha['posicion_meta'] + 1}"
                 print(f"  └─ Ficha {ficha['id'] + 1}: {casilla_actual}")
         else:
             print("  └─ Ninguna")

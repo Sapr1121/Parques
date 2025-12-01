@@ -518,6 +518,23 @@ class ParchisServer:
                     logger.info(f"{info['nombre']} mantiene el turno - reenviando notificación")
                     await asyncio.sleep(0.1)
                     await self.broadcast(proto.mensaje_turno(info["nombre"], info["color"]))
+                
+                # ⭐ NUEVO: Verificar si puede hacer alguna acción CON DOBLES después de sacar/no tener fichas en cárcel
+                if not self.game_manager.puede_hacer_alguna_accion(websocket):
+                    info = self.game_manager.clientes[websocket]
+                    logger.info(f"{info['nombre']} sacó dobles pero no puede mover ninguna ficha - pasando turno")
+                    
+                    await self.broadcast(proto.crear_mensaje(
+                        proto.MSG_INFO,
+                        mensaje=f"{info['nombre']} sacó dobles pero no puede hacer ninguna acción. Turno pasado."
+                    ))
+                    
+                    if self.game_manager.forzar_avance_turno():
+                        logger.info("Turno forzado - notificando al siguiente jugador")
+                        await asyncio.sleep(0.2)
+                        await self.broadcast_tablero()
+                        await asyncio.sleep(0.1)
+                        await self.notificar_turno()
             
             else:
                 logger.info(f"Sin dobles - verificando si puede hacer acciones...")

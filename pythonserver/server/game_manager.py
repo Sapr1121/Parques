@@ -541,14 +541,14 @@ class GameManager:
             # Verificar si alguna ficha en camino a meta puede moverse con los dados disponibles
             for ficha in fichas_en_camino_meta:
                 pasos_restantes = 7 - ficha.posicion_meta
-                # ⭐ CRÍTICO: Verificar dados individuales (no suma cuando hay dobles)
+                # ⭐ CRÍTICO: Verificar dados individuales Y suma
                 if self.ultimo_es_doble:
-                    # Con dobles, puede usar cualquiera de los dos dados individuales
-                    if self.ultimo_dado1 <= pasos_restantes:
+                    # Con dobles, puede usar cualquiera de los dos dados individuales O la suma
+                    if self.ultimo_dado1 <= pasos_restantes or self.ultimo_dado2 <= pasos_restantes or self.ultima_suma <= pasos_restantes:
                         return True
                 else:
                     # Sin dobles, puede usar dados individuales o suma
-                    if min(self.ultimo_dado1, self.ultimo_dado2) <= pasos_restantes:
+                    if self.ultimo_dado1 <= pasos_restantes or self.ultimo_dado2 <= pasos_restantes or self.ultima_suma <= pasos_restantes:
                         return True
             
             return False
