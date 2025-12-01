@@ -1,4 +1,4 @@
-#!/home/sebastian/Desktop/UTP/SistemasDistribuidos/Parques/pythonserver/venv/bin/python
+#!/home/saantigh/Universidad/sistemas_distribuidos/Parques/pythonserver/venv/bin/python3.13
 import sys
 from websockets.cli import main
 if __name__ == '__main__':
