@@ -12,7 +12,8 @@ const Lobby = () => {
   const location = useLocation();
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
   const [conectados, setConectados] = useState(0);
-  const [requeridos, setRequeridos] = useState(2);
+  const [requeridos, setRequeridos] = useState(2); // Mínimo para iniciar
+  const MAX_JUGADORES = 4; // Máximo de jugadores permitidos
   // Si viene de /create-room (sin state o isAdmin true), es admin
   // Si viene de /join-room (isAdmin: false), no es admin
   const [esAdmin, setEsAdmin] = useState(location.state?.isAdmin ?? true);
@@ -156,8 +157,8 @@ const Lobby = () => {
     }
   }, [lastMessage, jugadores, miInfo, esAdmin, navigate]);
 
-  // Botón solo visible si eres admin y hay suficientes jugadores
-  const puedeIniciar = esAdmin && conectados >= 2 && conectados <= 4;
+  // Botón solo visible si eres admin y hay suficientes jugadores (2-4)
+  const puedeIniciar = esAdmin && conectados >= requeridos && conectados <= MAX_JUGADORES;
 
   const handleIniciar = () => {
     send({ tipo: "LISTO" });
@@ -283,7 +284,7 @@ const Lobby = () => {
           marginBottom: '1.5rem'
         }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem' }}>
-            Jugadores conectados ({conectados}/{requeridos} mínimo)
+            Jugadores conectados ({conectados}/{MAX_JUGADORES})
           </h3>
           {jugadores.length === 0 && !miInfo ? (
             <div style={{ color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', textAlign: 'center' }}>

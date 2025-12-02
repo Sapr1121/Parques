@@ -62,82 +62,72 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
     
     console.log('🎲 TurnDetermination recibió:', lastMessage);
     
-    // Mensaje de inicio - determinar si es mi turno
+    if (lastMessage.tipo === 'DETERMINACION_RESULTADO') {
+      const { nombre, color, dado1, dado2, suma, siguiente } = lastMessage;
+
+      setRolls((prev) => ({
+        ...prev,
+        [color]: { nombre, color, dado1, dado2, suma },
+      }));
+
+      if (siguiente) {
+        setJugadorActual(siguiente);
+        setEsMiTurno(siguiente === miNombre);
+        setYaLance(false); // Permitir tirar de nuevo
+      }
+    }
+
+    if (lastMessage.tipo === 'DETERMINACION_EMPATE') {
+      const { jugadores, valor } = lastMessage;
+
+      setHayEmpate(true);
+      setJugadoresEmpatados(jugadores);
+      setValorEmpate(valor);
+
+      const estoy = jugadores.some((j: { color: string }) => j.color === miColor);
+      setEstoyEnDesempate(estoy);
+
+      if (estoy) {
+        setYaLance(false); // Permitir tirar de nuevo
+        setEsMiTurno(true); // Los empatados pueden tirar
+      }
+
+      setRolls({}); // Limpiar tiradas anteriores
+    }
+
     if (lastMessage.tipo === 'DETERMINACION_INICIO') {
       const jugadorActualMsg = lastMessage.jugador_actual || '';
       setJugadorActual(jugadorActualMsg);
-      
-      // Si no hay jugador_actual especificado y soy el primer jugador (myId === 0), es mi turno
+
       if (!jugadorActualMsg && myId === 0) {
         setEsMiTurno(true);
       } else {
         setEsMiTurno(jugadorActualMsg === miNombre);
       }
-      
-      // Reset estados
+
+      setYaLance(false); // Asegurar que el jugador pueda tirar
       setHayEmpate(false);
       setEstoyEnDesempate(false);
     }
-    
-    // Resultado de una tirada
-    if (lastMessage.tipo === 'DETERMINACION_RESULTADO') {
-      const { nombre, color, dado1, dado2, suma, siguiente } = lastMessage;
-      
-      // Guardar resultado
-      setRolls(prev => ({
-        ...prev,
-        [color]: { nombre, color, dado1, dado2, suma }
-      }));
-      
-      // Actualizar turno
-      if (siguiente) {
-        setJugadorActual(siguiente);
-        setEsMiTurno(siguiente === miNombre);
-      }
-    }
-    
-    // Empate detectado
-    if (lastMessage.tipo === 'DETERMINACION_EMPATE') {
-      const { jugadores, valor, mensaje } = lastMessage;
-      
-      setHayEmpate(true);
-      setJugadoresEmpatados(jugadores);
-      setValorEmpate(valor);
-      
-      // Verificar si estoy en el desempate
-      const estoy = jugadores.some((j: any) => j.color === miColor);
-      setEstoyEnDesempate(estoy);
-      
-      if (estoy) {
-        setYaLance(false); // Permitir tirar de nuevo
-        setEsMiTurno(true); // Los empatados pueden tirar
-      }
-      
-      // Limpiar tiradas anteriores para mostrar solo el desempate
-      setRolls({});
-    }
-    
-    // Ganador determinado
+
     if (lastMessage.tipo === 'DETERMINACION_GANADOR') {
-      const { ganador: ganadorInfo, orden, mensaje } = lastMessage;
-      
+      const { ganador: ganadorInfo, orden } = lastMessage;
+
       setFinished(true);
       setGanador(ganadorInfo);
       setOrdenFinal(orden);
-      
-      // Convertir orden al formato esperado por onFinish
-      const ordenPlayers = orden.map((p: any, idx: number) => ({
+
+      const ordenPlayers = orden.map((p: { nombre: string; color: string }, idx: number) => ({
         id: idx,
         name: p.nombre,
         color: p.color,
       }));
-      
-      // Esperar un momento para mostrar el resultado antes de navegar
+
       setTimeout(() => {
         onFinish(ordenPlayers);
       }, 3000);
     }
-  }, [lastMessage, miNombre, miColor, myId, onFinish]);
+  }, [lastMessage, miNombre, myId, miColor, onFinish]);
 
   // Obtener color de fondo según el color del jugador
   const getColorBg = (color: string) => {

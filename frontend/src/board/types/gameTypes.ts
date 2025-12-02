@@ -69,7 +69,9 @@ export type TipoMensaje =
   | 'DETERMINACION_EMPATE'
   | 'DETERMINACION_GANADOR'
   | 'SOLICITAR_COLORES'
-  | 'COLORES_DISPONIBLES';
+  | 'COLORES_DISPONIBLES'
+  | 'PREMIO_TRES_DOBLES'
+  | 'ELEGIR_FICHA_PREMIO';
 
 // Mensaje base
 export interface MensajeBase {
@@ -148,6 +150,21 @@ export interface MensajeVictoria extends MensajeBase {
   tipo: 'VICTORIA';
   ganador: string;
   color: ColorJugador;
+}
+
+// ⭐ NUEVO: Mensaje de premio por 3 dobles consecutivos
+export interface MensajePremioTresDobles extends MensajeBase {
+  tipo: 'PREMIO_TRES_DOBLES';
+  nombre: string;
+  fichas_elegibles: Array<{
+    id: number;
+    estado: string;
+    color: ColorJugador;
+    posicion: number;
+    posicion_meta: number | null;
+    en_camino_meta: boolean;
+  }>;
+  mensaje: string;
 }
 
 // ============================================

@@ -9,7 +9,8 @@ export type MessageType =
   | "SACAR_TODAS"
   | "MOVER_FICHA"
   | "DETERMINACION_TIRADA"
-  | "SOLICITAR_COLORES";
+  | "SOLICITAR_COLORES"
+  | "ELEGIR_FICHA_PREMIO";
 
 export interface BaseMessage {
   tipo: MessageType;
