@@ -6,6 +6,8 @@ export function useJoinRoom() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [roomInfo, setRoomInfo] = useState<any>(null);
+  const [availableColors, setAvailableColors] = useState<string[]>(['rojo', 'azul', 'amarillo', 'verde']);
+  const [loadingColors, setLoadingColors] = useState(false);
   const { connect, connected } = useSocket();
 
   async function handleJoin(code: string, color: string, playerName: string) {
@@ -43,5 +45,75 @@ export function useJoinRoom() {
     }
   }
 
-  return { status, error, roomInfo, connected, handleJoin };
+  async function fetchAvailableColors(code: string): Promise<string[]> {
+    setLoadingColors(true);
+    setError('');
+    
+    try {
+      // Primero obtener info de la sala
+      const response = await queryRoom(code);
+      
+      if (response.status !== 'success' || !response.lobby) {
+        setError('Sala no encontrada');
+        return [];
+      }
+      
+      // Hacer una petición temporal para obtener colores disponibles
+      const wsUrl = `ws://${response.lobby.ip}:${response.lobby.port}`;
+      
+      return new Promise((resolve) => {
+        const tempWs = new WebSocket(wsUrl);
+        let resolved = false;
+        
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            tempWs.close();
+            console.log('⏱️ Timeout obteniendo colores, usando todos');
+            resolve(['rojo', 'azul', 'amarillo', 'verde']);
+          }
+        }, 5000);
+        
+        tempWs.onopen = () => {
+          console.log('🔌 Conectado temporalmente para obtener colores');
+          tempWs.send(JSON.stringify({ tipo: 'SOLICITAR_COLORES' }));
+        };
+        
+        tempWs.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            console.log('📩 Respuesta de colores:', msg);
+            
+            if (msg.tipo === 'COLORES_DISPONIBLES') {
+              clearTimeout(timeout);
+              resolved = true;
+              tempWs.close();
+              const colores = msg.colores || [];
+              setAvailableColors(colores);
+              resolve(colores);
+            }
+          } catch (e) {
+            console.error('Error parseando mensaje:', e);
+          }
+        };
+        
+        tempWs.onerror = () => {
+          if (!resolved) {
+            clearTimeout(timeout);
+            resolved = true;
+            tempWs.close();
+            console.log('❌ Error obteniendo colores');
+            resolve(['rojo', 'azul', 'amarillo', 'verde']);
+          }
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching colors:', err);
+      return ['rojo', 'azul', 'amarillo', 'verde'];
+    } finally {
+      setLoadingColors(false);
+    }
+  }
+
+  return { status, error, roomInfo, connected, handleJoin, availableColors, loadingColors, fetchAvailableColors };
 }

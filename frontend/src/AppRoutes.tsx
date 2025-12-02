@@ -7,11 +7,15 @@ import { NetworkTest } from "./network/components/test";
 import { CreateRoom } from './createroom/pages/lobby';
 import  JoinRoom  from './joinroom/pages/JoinRoom';
 import Lobby from './joinroom/pages/Lobby';
+import LoginRegister from './auth/pages/LoginRegister';
+import Estadisticas from './stats/pages/Estadisticas';
 
 const AppRoutes = () => (
   <BrowserRouter>
     <Routes>
       <Route path="/" element={<MainMenu />} />
+      <Route path="/auth" element={<LoginRegister />} />
+      <Route path="/estadisticas" element={<Estadisticas />} />
       <Route path="/board" element={<Board />} />
       <Route path="/game" element={<BoardGame />} />
       <Route path="/network-test" element={<NetworkTest />} /> 

@@ -36,6 +36,13 @@ class ParchisServer:
         self.clientes_activos = set()
         self.modo_embebido = modo_embebido
         
+        # Inicializar el gestor de base de datos
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+        from database.db_manager import DatabaseManager
+        self.db_manager = DatabaseManager()
+        
     async def iniciar(self):
         """Inicia el servidor WebSocket"""
         try:
@@ -134,7 +141,20 @@ class ParchisServer:
                             
                             continue  # ← Continuar esperando más mensajes
                         
-                        # Si no es SYNC_REQUEST ni SOLICITAR_COLORES ni MSG_CONECTAR, rechazar
+                        # 🆕 PERMITIR mensajes de autenticación antes del handshake
+                        if tipo == proto.MSG_REGISTRAR_USUARIO:
+                            await self.procesar_registro_usuario(websocket, mensaje)
+                            continue
+                        
+                        if tipo == proto.MSG_LOGIN_USUARIO:
+                            await self.procesar_login_usuario(websocket, mensaje)
+                            continue
+                        
+                        if tipo == proto.MSG_OBTENER_ESTADISTICAS:
+                            await self.procesar_obtener_estadisticas(websocket, mensaje)
+                            continue
+                        
+                        # Si no es ninguno de los mensajes permitidos antes de conectar
                         if tipo != proto.MSG_CONECTAR:
                             logger.warning(f"Protocolo inválido de {addr}: {tipo}")
                             await self.enviar(websocket, proto.mensaje_error("Protocolo inválido: se esperaba CONECTAR"))
@@ -168,9 +188,10 @@ class ParchisServer:
                         jugador_id = self.game_manager.clientes[websocket]["id"]
                         await self.enviar(websocket, proto.mensaje_bienvenida(color, jugador_id, nombre))
                         
-                        # Notificar estado
+                        # Notificar estado con lista de jugadores
                         conectados = len(self.game_manager.jugadores)
-                        await self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES))
+                        jugadores_lista = self.game_manager.obtener_info_jugadores()
+                        await self.broadcast(proto.mensaje_esperando(conectados, proto.MIN_JUGADORES, jugadores_lista))
                         
                         # ⭐ NUEVO: Inicio automático con 4 jugadores
                         if conectados == proto.MAX_JUGADORES:
@@ -279,7 +300,8 @@ class ParchisServer:
             
             try:
                 naveg = len(self.game_manager.jugadores)
-                await self.broadcast(proto.mensaje_esperando(naveg, proto.MIN_JUGADORES))
+                jugadores_lista = self.game_manager.obtener_info_jugadores()
+                await self.broadcast(proto.mensaje_esperando(naveg, proto.MIN_JUGADORES, jugadores_lista))
             except Exception:
                 logger.exception("Error enviando MSG_ESPERANDO tras desconexión")
 
@@ -302,6 +324,130 @@ class ParchisServer:
 
         except Exception as e:
             logger.error(f"Error limpiando cliente: {e}")
+
+    # ========== MÉTODOS DE AUTENTICACIÓN ==========
+    
+    async def enviar_directo(self, websocket, mensaje):
+        """Envía un mensaje directamente sin verificar clientes_activos (para auth)"""
+        try:
+            mensaje_json = json.dumps(mensaje, ensure_ascii=False)
+            logger.debug(f"Enviando directo a {websocket.remote_address}: {mensaje}")
+            await websocket.send(mensaje_json)
+            logger.debug(f"Mensaje enviado exitosamente")
+        except websockets.exceptions.ConnectionClosed:
+            logger.debug("No se pudo enviar: conexión cerrada")
+        except Exception as e:
+            logger.error(f"Error enviando mensaje directo: {e}")
+    
+    async def procesar_registro_usuario(self, websocket, mensaje):
+        """Procesa el registro de un nuevo usuario"""
+        try:
+            username = mensaje.get("username")
+            password = mensaje.get("password")
+            email = mensaje.get("email")
+            
+            logger.info(f"Intento de registro: usuario={username}")
+            
+            # Validar datos
+            if not username or not password:
+                respuesta = proto.mensaje_registro_exitoso(
+                    False, 
+                    "Usuario y contraseña son obligatorios"
+                )
+                await self.enviar_directo(websocket, respuesta)
+                return
+            
+            # Intentar registrar en la base de datos
+            exito, mensaje_resultado = self.db_manager.registrar_usuario(
+                username, password, email
+            )
+            
+            # Enviar respuesta
+            respuesta = proto.mensaje_registro_exitoso(exito, mensaje_resultado)
+            await self.enviar_directo(websocket, respuesta)
+            
+            if exito:
+                logger.info(f"✅ Usuario registrado exitosamente: {username}")
+            else:
+                logger.warning(f"❌ Fallo en registro: {mensaje_resultado}")
+                
+        except Exception as e:
+            logger.error(f"Error en procesar_registro_usuario: {e}", exc_info=True)
+            respuesta = proto.mensaje_registro_exitoso(False, "Error interno del servidor")
+            await self.enviar_directo(websocket, respuesta)
+    
+    async def procesar_login_usuario(self, websocket, mensaje):
+        """Procesa el login de un usuario"""
+        try:
+            username = mensaje.get("username")
+            password = mensaje.get("password")
+            
+            logger.info(f"Intento de login: usuario={username}")
+            
+            # Validar datos
+            if not username or not password:
+                respuesta = proto.mensaje_login_exitoso(
+                    False,
+                    "Usuario y contraseña son obligatorios",
+                    None
+                )
+                await self.enviar_directo(websocket, respuesta)
+                return
+            
+            # Intentar autenticar
+            exito, mensaje_resultado, usuario_id = self.db_manager.autenticar_usuario(
+                username, password
+            )
+            
+            # Enviar respuesta
+            respuesta = proto.mensaje_login_exitoso(exito, mensaje_resultado, usuario_id)
+            await self.enviar_directo(websocket, respuesta)
+            
+            if exito:
+                logger.info(f"✅ Login exitoso: {username} (ID: {usuario_id})")
+            else:
+                logger.warning(f"❌ Fallo en login: {mensaje_resultado}")
+                
+        except Exception as e:
+            logger.error(f"Error en procesar_login_usuario: {e}", exc_info=True)
+            respuesta = proto.mensaje_login_exitoso(False, "Error interno del servidor", None)
+            await self.enviar_directo(websocket, respuesta)
+    
+    async def procesar_obtener_estadisticas(self, websocket, mensaje):
+        """Procesa la solicitud de estadísticas de un usuario"""
+        try:
+            usuario_id = mensaje.get("usuario_id")
+            
+            logger.info(f"Solicitud de estadísticas: usuario_id={usuario_id}")
+            
+            # Validar datos
+            if not usuario_id:
+                respuesta = proto.mensaje_estadisticas(
+                    False,
+                    "ID de usuario requerido",
+                    None
+                )
+                await self.enviar_directo(websocket, respuesta)
+                return
+            
+            # Obtener estadísticas
+            stats = self.db_manager.obtener_estadisticas(usuario_id)
+            
+            if stats:
+                respuesta = proto.mensaje_estadisticas(True, "Estadísticas obtenidas", stats)
+                logger.info(f"✅ Estadísticas enviadas para usuario ID: {usuario_id}")
+            else:
+                respuesta = proto.mensaje_estadisticas(False, "Usuario no encontrado", None)
+                logger.warning(f"❌ Usuario no encontrado: {usuario_id}")
+            
+            await self.enviar_directo(websocket, respuesta)
+                
+        except Exception as e:
+            logger.error(f"Error en procesar_obtener_estadisticas: {e}", exc_info=True)
+            respuesta = proto.mensaje_estadisticas(False, "Error interno del servidor", None)
+            await self.enviar_directo(websocket, respuesta)
+    
+    # ========== FIN MÉTODOS DE AUTENTICACIÓN ==========
 
     async def procesar_mensaje(self, websocket, mensaje):
         """Procesa los diferentes tipos de mensajes del cliente"""

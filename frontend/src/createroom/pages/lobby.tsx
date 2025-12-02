@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateRoom } from '../hooks/useCreateRoom';
 import { ColorSelector } from '../components/ColorSelector';
+import { obtenerSesion } from '../../auth/services/authService';
 
 export const CreateRoom: React.FC = () => {
   const navigate = useNavigate();
@@ -9,6 +10,14 @@ export const CreateRoom: React.FC = () => {
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Cargar el nombre del usuario si está logueado
+  useEffect(() => {
+    const sesion = obtenerSesion();
+    if (sesion) {
+      setName(sesion.username);
+    }
+  }, []);
 
   const handleCreate = async () => {
     if (!name.trim() || !color) return;

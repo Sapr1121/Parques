@@ -1,11 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useJoinRoom } from '../hooks/useJoinRoom';
+import { obtenerSesion } from '../../auth/services/authService';
 
+const ALL_COLORS = ['amarillo', 'azul', 'rojo', 'verde'];
 
 const JoinRoomModal = ({ isOpen, onClose, onJoin, selectedColor, setSelectedColor }) => {
   const [joinCode, setJoinCode] = useState('');
   const [playerName, setPlayerName] = useState('');
-  const { status, error, handleJoin } = useJoinRoom();
+  const { status, error, handleJoin, availableColors, loadingColors, fetchAvailableColors } = useJoinRoom();
+  const lastFetchedCode = useRef<string>('');
+
+  // Cargar el nombre del usuario si está logueado
+  useEffect(() => {
+    const sesion = obtenerSesion();
+    if (sesion) {
+      setPlayerName(sesion.username);
+    }
+  }, []);
+
+  // Obtener colores disponibles cuando el código esté completo
+  useEffect(() => {
+    const fetchColors = async () => {
+      const code = joinCode.trim().toUpperCase();
+      // Solo buscar si el código tiene 8 caracteres y es diferente al último
+      if (code.length === 8 && code !== lastFetchedCode.current) {
+        const hexRegex = /^[0-9A-F]{8}$/;
+        if (hexRegex.test(code)) {
+          console.log('🎨 Obteniendo colores disponibles para sala:', code);
+          lastFetchedCode.current = code;
+          const colors = await fetchAvailableColors(code);
+          console.log('🎨 Colores disponibles:', colors);
+          
+          // Si el color seleccionado ya no está disponible, seleccionar el primero disponible
+          if (colors.length > 0 && !colors.includes(selectedColor)) {
+            setSelectedColor(colors[0]);
+          }
+        }
+      }
+    };
+    
+    fetchColors();
+  }, [joinCode]);
 
   if (!isOpen) return null;
 
@@ -123,19 +158,45 @@ const JoinRoomModal = ({ isOpen, onClose, onJoin, selectedColor, setSelectedColo
         <div className="mb-6">
           <label className="block text-gray-700 font-bold mb-3 text-sm sm:text-base">
             Selecciona tu color:
+            {loadingColors && <span className="ml-2 text-blue-500 text-xs animate-pulse">🔄 Cargando...</span>}
           </label>
-          <div className="flex gap-2 justify-center">
-            {['amarillo', 'azul', 'rojo', 'verde'].map((color) => (
-              <button
-                key={color}
-                type="button"
-                className={`px-4 py-2 rounded font-bold border-2 ${selectedColor === color ? 'border-yellow-500 bg-yellow-100' : 'border-gray-300 bg-gray-100'}`}
-                onClick={() => setSelectedColor(color)}
-              >
-                {color.charAt(0).toUpperCase() + color.slice(1)}
-              </button>
-            ))}
+          <div className="flex gap-2 justify-center flex-wrap">
+            {ALL_COLORS.map((color) => {
+              const isAvailable = availableColors.includes(color);
+              const isSelected = selectedColor === color;
+              
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  disabled={!isAvailable}
+                  className={`px-4 py-2 rounded font-bold border-2 transition-all duration-200
+                    ${isSelected && isAvailable
+                      ? 'border-yellow-500 bg-yellow-100 scale-105 shadow-lg' 
+                      : isAvailable
+                        ? 'border-gray-300 bg-gray-100 hover:border-gray-400 hover:bg-gray-200'
+                        : 'border-gray-200 bg-gray-100 opacity-40 cursor-not-allowed line-through'
+                    }`}
+                  onClick={() => isAvailable && setSelectedColor(color)}
+                  title={!isAvailable ? 'Color ya tomado por otro jugador' : `Seleccionar ${color}`}
+                >
+                  <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
+                    color === 'amarillo' ? 'bg-yellow-400' :
+                    color === 'azul' ? 'bg-blue-500' :
+                    color === 'rojo' ? 'bg-red-500' :
+                    'bg-green-500'
+                  }`}></span>
+                  {color.charAt(0).toUpperCase() + color.slice(1)}
+                  {!isAvailable && <span className="ml-1 text-red-500">❌</span>}
+                </button>
+              );
+            })}
           </div>
+          {availableColors.length === 0 && joinCode.length === 8 && (
+            <p className="text-red-500 text-sm mt-2 text-center">
+              ⚠️ No hay colores disponibles en esta sala (sala llena)
+            </p>
+          )}
         </div>
 
 
