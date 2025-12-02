@@ -48,6 +48,19 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
   const colorFicha = COLORES[fichaColor];
   const ambosDisponibles = !dado1Usado && !dado2Usado;
 
+  // ⭐ Detectar si el menú debe aparecer ABAJO en lugar de arriba
+  // Esto incluye:
+  // 1. Casillas superiores del tablero (29-39)
+  // 2. Camino a meta (posicionMeta >= 0 y la Y del menú está arriba)
+  // 3. Cualquier posición donde la Y del menú esté cerca del borde superior
+  const estaEnZonaSuperior = 
+    // Casillas del tablero en fila superior
+    (fichaPosicion !== undefined && fichaPosicion >= 29 && fichaPosicion <= 39) ||
+    // O está en camino a meta y el menú está muy arriba (menos de 150px desde el top)
+    (fichaEstado === 'CAMINO_META' && position.y < 150) ||
+    // O simplemente el menú está muy arriba en la pantalla
+    (position.y < 120);
+
   // Calcular pasos restantes:
   // - Si la ficha está en CAMINO_META: pasos = 7 - posicion_meta
   // - Si la ficha está EN_JUEGO y está justo en la casilla de salida para su color: faltan 8 pasos
@@ -79,13 +92,18 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
           left: position.x,
           top: position.y,
           borderColor: colorFicha,
-          transform: 'translate(-50%, -100%)',
-          marginTop: -10
+          // Si está en zona superior, mostrar ABAJO (+10px), si no, ARRIBA (-100%)
+          transform: estaEnZonaSuperior ? 'translate(-50%, 10px)' : 'translate(-50%, -100%)',
+          marginTop: estaEnZonaSuperior ? 0 : -10
         }}
       >
-        {/* Flecha apuntando hacia abajo */}
+        {/* Flecha apuntando hacia la ficha */}
         <div
-          className="absolute left-1/2 -bottom-2 w-4 h-4 bg-white border-r-2 border-b-2 transform rotate-45 -translate-x-1/2"
+          className={`absolute left-1/2 w-4 h-4 bg-white transform -translate-x-1/2 ${
+            estaEnZonaSuperior 
+              ? '-top-2 border-l-2 border-t-2 -rotate-45' // Flecha arriba cuando menú está abajo
+              : '-bottom-2 border-r-2 border-b-2 rotate-45' // Flecha abajo cuando menú está arriba
+          }`}
           style={{ borderColor: colorFicha }}
         />
 

@@ -681,6 +681,11 @@ const Board: React.FC = () => {
             ? (state.jugadores.find(j => j.color === fichaParaMenu.color)?.fichas.find(f => f.id === fichaParaMenu.id)?.posicion_meta)
             : undefined
         }
+        fichaPosicion={
+          fichaParaMenu
+            ? (state.jugadores.find(j => j.color === fichaParaMenu.color)?.fichas.find(f => f.id === fichaParaMenu.id)?.posicion)
+            : undefined
+        }
         onSeleccionarDado={handleSeleccionarDado}
         onCerrar={cerrarMenu}
       />
