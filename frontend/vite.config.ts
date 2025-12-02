@@ -6,6 +6,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    port: 5174 // Cambia este número si quieres otro puerto
+    port: 5174,
+    host: '0.0.0.0', // Permite acceso externo (necesario para Port Forwarding)
   }
 })

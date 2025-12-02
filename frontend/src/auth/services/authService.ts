@@ -2,7 +2,22 @@
  * Servicio de autenticación - Comunicación con el servidor de Python
  */
 
-const WS_URL = 'ws://localhost:8001';
+// Detectar dinámicamente la URL del WebSocket basándose en el host actual
+function getWsUrl(): string {
+  const envUrl = import.meta.env.VITE_WS_URL;
+  if (envUrl && !envUrl.includes('localhost')) {
+    return envUrl;
+  }
+  
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'ws://localhost:8001';
+  }
+  
+  // Si estamos accediendo desde otra IP (LAN), usar esa misma IP
+  return `ws://${window.location.hostname}:8001`;
+}
+
+const WS_URL = getWsUrl();
 
 interface RegistroResponse {
   exito: boolean;

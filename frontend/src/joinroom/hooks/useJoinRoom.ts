@@ -26,7 +26,8 @@ export function useJoinRoom() {
       setRoomInfo(response.lobby);
       setStatus(`Sala encontrada. Conectando...`);
 
-      // URL del WebSocket del servidor de la sala
+      // Construir URL del WebSocket usando la IP y puerto del servidor de la sala
+      // Esto permite conexión en red local (LAN)
       const wsUrl = `ws://${response.lobby.ip}:${response.lobby.port}`;
       
       console.log('🔌 Conectando a:', wsUrl);
@@ -58,7 +59,7 @@ export function useJoinRoom() {
         return [];
       }
       
-      // Hacer una petición temporal para obtener colores disponibles
+      // Construir URL del WebSocket usando la IP y puerto del servidor de la sala
       const wsUrl = `ws://${response.lobby.ip}:${response.lobby.port}`;
       
       return new Promise((resolve) => {

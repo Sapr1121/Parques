@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 
 export const NetworkTest: React.FC = () => {
-  const { connected, lastMessage, error, connect, send } = useWebSocket("ws://localhost:8001");
+  const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8001";
+  const { connected, lastMessage, error, connect, send } = useWebSocket(wsUrl);
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
 

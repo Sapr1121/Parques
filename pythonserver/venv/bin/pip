@@ -1,4 +1,4 @@
-#!/home/saantigh/Universidad/sistemas_distribuidos/Parques/pythonserver/venv/bin/python3.13
+#!/home/sebastian/Desktop/UTP/SistemasDistribuidos/Parques/pythonserver/venv/bin/python3
 import sys
 from pip._internal.cli.main import main
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const REGISTRY_URL = 'http://localhost:9000';
+const REGISTRY_URL = import.meta.env.VITE_REGISTRY_URL || 'http://localhost:9000';
 
 export const registerRoom = async (hexCode: string, gamePort: number, hostName: string, ipAddress: string) => {
   const res = await axios.post(REGISTRY_URL, {

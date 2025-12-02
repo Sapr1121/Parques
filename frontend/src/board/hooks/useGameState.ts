@@ -92,6 +92,8 @@ export const useGameState = (
   const [puedeRelanzar, setPuedeRelanzar] = useState(false);
   // Ref para leer el estado más reciente de dadosUsados dentro de closures
   const dadosUsadosRef = useRef<number[]>([]);
+  // Ref para evitar enviar SACAR_TODAS múltiples veces
+  const sacarTodasEnviadoRef = useRef(false);
   
   // Ficha seleccionada
   const [fichaSeleccionada, setFichaSeleccionada] = useState<{ color: ColorJugador; id: number } | null>(null);
@@ -130,6 +132,7 @@ export const useGameState = (
           });
           setPuedeRelanzar(false);
           setFichaSeleccionada(null);
+          sacarTodasEnviadoRef.current = false; // Resetear para nuevo turno
         }
         break;
       }
@@ -150,12 +153,14 @@ export const useGameState = (
         
         // AUTOMATICO: Si es mi turno, son dobles, y TODAS las fichas están en cárcel
         // enviar SACAR_TODAS automáticamente (como el cliente Python)
-        if (esMiTurno && msg.es_doble && miColor) {
+        // Usar ref para evitar enviar múltiples veces
+        if (esMiTurno && msg.es_doble && miColor && !sacarTodasEnviadoRef.current) {
           const miJugador = jugadores.find(j => j.color === miColor);
           if (miJugador) {
             const todasEnCarcel = miJugador.fichas.every(f => f.estado === 'BLOQUEADO');
             if (todasEnCarcel && miJugador.fichas.length === 4) {
               console.log('🔓 Todas en cárcel + dobles! Enviando SACAR_TODAS automáticamente...');
+              sacarTodasEnviadoRef.current = true; // Marcar que ya se envió
               // Pequeño delay para que el UI muestre los dados primero
               setTimeout(() => {
                 send({ tipo: 'SACAR_TODAS' });
@@ -168,7 +173,7 @@ export const useGameState = (
       
       case 'TABLERO': {
         const msg = lastMessage as MensajeTablero;
-        console.log('📋 TABLERO recibido - COMPLETO:', JSON.stringify(msg, null, 2));
+        console.log('📋 TABLERO recibido - actualizando estado...');
         console.log('📋 TABLERO - Fichas por jugador:', {
           jugadores: msg.jugadores.map(j => ({
             nombre: j.nombre,
@@ -195,6 +200,12 @@ export const useGameState = (
         
         // Forzar una copia profunda para asegurar que React detecte el cambio
         const jugadoresActualizados = JSON.parse(JSON.stringify(msg.jugadores));
+        console.log('📋 TABLERO - Seteando jugadores:', jugadoresActualizados.length, 'jugadores');
+        console.log('📋 TABLERO - Mi color es:', miColor);
+        const miJugadorNuevo = jugadoresActualizados.find((j: JugadorTablero) => j.color === miColor);
+        if (miJugadorNuevo) {
+          console.log('📋 TABLERO - Mis fichas ahora:', miJugadorNuevo.fichas.map((f: any) => ({id: f.id, estado: f.estado, pos: f.posicion})));
+        }
         setJugadores(jugadoresActualizados);
         setTurnoActual(msg.turno_actual);
         setDadosLanzados(msg.dados_lanzados);

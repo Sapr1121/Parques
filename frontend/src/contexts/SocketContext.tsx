@@ -32,8 +32,23 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setMessageQueue([]);
   }, []);
 
+  // Función para obtener la URL del WebSocket dinámicamente
+  const getDefaultWsUrl = (): string => {
+    const envUrl = import.meta.env.VITE_WS_URL;
+    if (envUrl && !envUrl.includes('localhost')) {
+      return envUrl;
+    }
+    
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'ws://localhost:8001';
+    }
+    
+    // Si estamos accediendo desde otra IP (LAN), usar esa misma IP
+    return `ws://${window.location.hostname}:8001`;
+  };
+
   const connect = async (name: string, color?: string, wsUrl?: string) => {
-    const url = wsUrl || import.meta.env.VITE_WS_URL || 'ws://localhost:8001';
+    const url = wsUrl || getDefaultWsUrl();
     
     // Si ya hay una conexión a una URL diferente, desconectar primero
     if (service.current && currentUrl.current !== url) {
