@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { obtenerSesion, cerrarSesion, haySesionActiva } from '../auth/services/authService';
 
 const MainMenu = () => {
   const navigate = useNavigate();
+  const [usuario, setUsuario] = useState<{ username: string; usuario_id: number } | null>(null);
+
+  useEffect(() => {
+    const sesion = obtenerSesion();
+    setUsuario(sesion);
+  }, []);
 
   const handleCreateRoom = () => {
     console.log('Crear Sala');
@@ -12,6 +19,19 @@ const MainMenu = () => {
   const handleJoinWithCode = () => {
     console.log('Unirse con Código');
     navigate('/join-room');
+  };
+
+  const handleLogin = () => {
+    navigate('/auth');
+  };
+
+  const handleEstadisticas = () => {
+    navigate('/estadisticas');
+  };
+
+  const handleCerrarSesion = () => {
+    cerrarSesion();
+    setUsuario(null);
   };
 
   const handleExit = () => {
@@ -24,6 +44,40 @@ const MainMenu = () => {
       style={{
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}>
+      
+      {/* Barra superior con usuario */}
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-20">
+        {usuario ? (
+          <>
+            <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
+              <span className="text-white font-semibold">👤 {usuario.username}</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleEstadisticas}
+                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-medium transition-all"
+              >
+                📊 Estadísticas
+              </button>
+              <button
+                onClick={handleCerrarSesion}
+                className="bg-red-500/30 hover:bg-red-500/50 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-medium transition-all"
+              >
+                Cerrar Sesión
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={handleLogin}
+              className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-medium transition-all"
+            >
+              🔐 Iniciar Sesión
+            </button>
+          </div>
+        )}
+      </div>
       
       {/* Partículas de fondo animadas */}
       <div className="absolute inset-0 overflow-hidden">

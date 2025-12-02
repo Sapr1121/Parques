@@ -8,7 +8,12 @@ MSG_MOVER_FICHA = "MOVER_FICHA"
 MSG_DESCONECTAR = "DESCONECTAR"
 MSG_LISTO = "LISTO"  # Cliente listo para empezar
 MSG_SACAR_TODAS = "SACAR_TODAS"  # Solicitar sacar todas las fichas de la cárcel   
-MSG_SOLICITAR_COLORES = "SOLICITAR_COLORES" 
+MSG_SOLICITAR_COLORES = "SOLICITAR_COLORES"
+
+# Mensajes de autenticación
+MSG_REGISTRAR_USUARIO = "REGISTRAR_USUARIO"
+MSG_LOGIN_USUARIO = "LOGIN_USUARIO"
+MSG_OBTENER_ESTADISTICAS = "OBTENER_ESTADISTICAS" 
 
 # ============================================
 # TIPOS DE MENSAJES: SERVIDOR → CLIENTE
@@ -26,6 +31,11 @@ MSG_JUGADOR_DESCONECTADO = "JUGADOR_DESCONECTADO"
 MSG_CAPTURA = "CAPTURA"
 MSG_INFO = "INFO"  # Mensajes informativos generales
 MSG_COLORES_DISPONIBLES = "COLORES_DISPONIBLES"
+
+# Respuestas de autenticación
+MSG_REGISTRO_EXITOSO = "REGISTRO_EXITOSO"
+MSG_LOGIN_EXITOSO = "LOGIN_EXITOSO"
+MSG_ESTADISTICAS = "ESTADISTICAS"
 
 # Mensajes para determinación de turnos
 MSG_DETERMINACION_INICIO = "DETERMINACION_INICIO"  # Servidor inicia fase de determinación
@@ -97,8 +107,12 @@ def mensaje_mover_ficha(ficha_id, dado_elegido):
 def mensaje_bienvenida(color, jugador_id, nombre):
     return crear_mensaje(MSG_BIENVENIDA, color=color, jugador_id=jugador_id, nombre=nombre)
 
-def mensaje_esperando(conectados, requeridos):
-    return crear_mensaje(MSG_ESPERANDO, conectados=conectados, requeridos=requeridos)
+def mensaje_esperando(conectados, requeridos, jugadores=None):
+    """Crea mensaje de espera con lista de jugadores conectados"""
+    msg = crear_mensaje(MSG_ESPERANDO, conectados=conectados, requeridos=requeridos)
+    if jugadores:
+        msg["jugadores"] = jugadores
+    return msg
 
 def mensaje_turno(nombre, color):
     return crear_mensaje(MSG_TURNO, nombre=nombre, color=color)
@@ -218,3 +232,57 @@ MSG_DEBUG_FORZAR_TRES_DOBLES = "DEBUG_FORZAR_TRES_DOBLES"
 
 def mensaje_debug_forzar_tres_dobles():
     return {"tipo": MSG_DEBUG_FORZAR_TRES_DOBLES}
+
+# ============================================
+# FUNCIONES PARA AUTENTICACIÓN
+# ============================================
+
+def mensaje_registrar_usuario(username, password, email=None):
+    """Cliente solicita registrar un nuevo usuario"""
+    return {
+        "tipo": MSG_REGISTRAR_USUARIO,
+        "username": username,
+        "password": password,
+        "email": email
+    }
+
+def mensaje_login_usuario(username, password):
+    """Cliente solicita iniciar sesión"""
+    return {
+        "tipo": MSG_LOGIN_USUARIO,
+        "username": username,
+        "password": password
+    }
+
+def mensaje_obtener_estadisticas(usuario_id):
+    """Cliente solicita estadísticas de un usuario"""
+    return {
+        "tipo": MSG_OBTENER_ESTADISTICAS,
+        "usuario_id": usuario_id
+    }
+
+def mensaje_registro_exitoso(exito, mensaje):
+    """Servidor confirma resultado de registro"""
+    return {
+        "tipo": MSG_REGISTRO_EXITOSO,
+        "exito": exito,
+        "mensaje": mensaje
+    }
+
+def mensaje_login_exitoso(exito, mensaje, usuario_id):
+    """Servidor confirma resultado de login"""
+    return {
+        "tipo": MSG_LOGIN_EXITOSO,
+        "exito": exito,
+        "mensaje": mensaje,
+        "usuario_id": usuario_id
+    }
+
+def mensaje_estadisticas(exito, mensaje, estadisticas):
+    """Servidor envía estadísticas del usuario"""
+    return {
+        "tipo": MSG_ESTADISTICAS,
+        "exito": exito,
+        "mensaje": mensaje,
+        "estadisticas": estadisticas
+    }
