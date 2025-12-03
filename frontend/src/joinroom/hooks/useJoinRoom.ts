@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { queryRoom } from '../services/registry';
 import { useSocket } from '../../contexts/SocketContext';
+import { obtenerSesion } from '../../auth/services/authService';
 
 export function useJoinRoom() {
   const [status, setStatus] = useState('');
@@ -33,8 +34,12 @@ export function useJoinRoom() {
       console.log('🔌 Conectando a:', wsUrl);
       console.log('👤 Jugador:', playerName, 'Color:', color);
       
+      // Obtener usuario_id de la sesión
+      const sesion = obtenerSesion();
+      const usuarioId = sesion?.usuario_id;
+      
       // Conectar usando el contexto global con la URL de la sala
-      await connect(playerName, color, wsUrl);
+      await connect(playerName, color, wsUrl, usuarioId);
       
       setStatus('Conectado al servidor');
       return { lobby: response.lobby };

@@ -45,18 +45,19 @@ class GameManager:
         self.jugadores_en_desempate = set()  # Jugadores que deben tirar en desempate
         self.orden_turnos_determinado = []  # Lista ordenada de jugadores según determinación
     
-    def agregar_jugador(self, websocket, nombre, color_elegido=None):
+    def agregar_jugador(self, websocket, nombre, color_elegido=None, usuario_id=None):
         """
         Agrega un jugador al juego.
         Args:
             websocket: conexión del cliente
             nombre: nombre del jugador
             color_elegido: color seleccionado por el jugador (opcional)
+            usuario_id: ID del usuario en la base de datos (opcional)
         
         Retorna: (color, error, es_admin, es_host)
         """
         with self.lock:
-            logger.debug(f"🔒 Agregando jugador {nombre} con color preferido: {color_elegido}")
+            logger.debug(f"🔒 Agregando jugador {nombre} con color preferido: {color_elegido} (usuario_id={usuario_id})")
 
             # Validar límite de jugadores
             if len(self.jugadores) >= proto.MAX_JUGADORES:
@@ -99,7 +100,8 @@ class GameManager:
                 "jugador": usuario,
                 "nombre": nombre,
                 "color": color,
-                "id": jugador_id
+                "id": jugador_id,
+                "usuario_id": usuario_id  # 🆕 ID de la base de datos
             }
 
             # Gestionar admin
@@ -557,8 +559,8 @@ class GameManager:
         """Lanza los dados - DEBE LLAMARSE CON LOCK EXTERNO"""
         logger.debug("🎲 Generando dados...")
         
-        self.ultimo_dado1 = random.randint(1, 1)
-        self.ultimo_dado2 = random.randint(1, 2)
+        self.ultimo_dado1 = random.randint(1, 6)
+        self.ultimo_dado2 = random.randint(1, 6)
         self.ultima_suma = self.ultimo_dado1 + self.ultimo_dado2
         self.ultimo_es_doble = self.ultimo_dado1 == self.ultimo_dado2
         self.dados_lanzados = True

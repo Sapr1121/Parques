@@ -152,7 +152,7 @@ export default function Estadisticas() {
 
           <div className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20 text-center">
             <div className="text-4xl font-bold text-yellow-400">
-              {((stats?.tasa_victoria || 0) * 100).toFixed(1)}%
+              {(stats?.tasa_victoria || 0).toFixed(1)}%
             </div>
             <div className="text-white/70 text-sm">Tasa de Victoria</div>
           </div>

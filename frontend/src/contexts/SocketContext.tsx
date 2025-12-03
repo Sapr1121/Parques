@@ -8,7 +8,7 @@ interface SocketCtx {
   lastMessage: any;
   messageQueue: any[];
   error: string | null;
-  connect: (name: string, color?: string, wsUrl?: string) => Promise<void>;
+  connect: (name: string, color?: string, wsUrl?: string, usuarioId?: number) => Promise<void>;
   send: (msg: BaseMessage) => void;
   disconnect: () => void;
   clearQueue: () => void;
@@ -47,7 +47,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return `ws://${window.location.hostname}:8001`;
   };
 
-  const connect = async (name: string, color?: string, wsUrl?: string) => {
+  const connect = async (name: string, color?: string, wsUrl?: string, usuarioId?: number) => {
     const url = wsUrl || getDefaultWsUrl();
     
     // Si ya hay una conexión a una URL diferente, desconectar primero
@@ -84,7 +84,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       service.current.on('error', (e) => setError(e));
     }
     
-    await service.current.connect(name, color);
+    await service.current.connect(name, color, usuarioId);
   };
   
   const send = (msg: BaseMessage) => service.current?.send(msg);
