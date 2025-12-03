@@ -3,9 +3,15 @@ import websockets
 import json
 import logging
 import inspect
+import sys
+import os
 from game_manager import GameManager
 import protocol as proto
 import time
+
+# Configurar path para importar DatabaseManager
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from database.db_manager import DatabaseManager
 
 
 
@@ -37,10 +43,6 @@ class ParchisServer:
         self.modo_embebido = modo_embebido
         
         # Inicializar el gestor de base de datos
-        import sys
-        import os
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-        from database.db_manager import DatabaseManager
         self.db_manager = DatabaseManager()
         
     async def iniciar(self):
