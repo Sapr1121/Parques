@@ -105,6 +105,7 @@ const Lobby = () => {
     // Si recibimos DETERMINACION_INICIO, marcamos el flag
     if (lastMessage.tipo === "DETERMINACION_INICIO") {
       console.log('🎲 Recibido DETERMINACION_INICIO, jugador_actual:', lastMessage.jugador_actual);
+      console.log('🎲 Estado actual - miInfo:', miInfo, 'jugadores:', jugadores, 'esAdmin:', esAdmin);
       pendingTurnDetermination.current = true;
     }
     
@@ -113,26 +114,58 @@ const Lobby = () => {
       // Construir lista de jugadores - usar jugadores si existe, sino crear desde miInfo
       let listaJugadores = jugadores.length > 0 ? jugadores : (miInfo ? [miInfo] : []);
       
+      console.log('🔍 pendingTurnDetermination activo, listaJugadores:', listaJugadores);
+      
       if (listaJugadores.length === 0) {
         console.log('⏳ Esperando lista de jugadores...');
         return;
       }
       
-      const jugadoresTurno = listaJugadores.map((j, idx) => ({
-        id: idx,
+      // Usar el ID del servidor si está disponible (j.id), sino usar el índice
+      const jugadoresTurno = listaJugadores.map((j: any, idx) => ({
+        id: j.id !== undefined ? j.id : idx,
         name: j.nombre,
         color: j.color
       }));
+      
+      console.log('🔍 jugadoresTurno construido:', jugadoresTurno);
       
       // Intentar obtener miId de miInfo
       let miId: number | undefined;
       if (miInfo) {
         miId = jugadoresTurno.find(j => j.name === miInfo.nombre)?.id;
+        console.log('🔍 Buscando miId por nombre:', miInfo.nombre, '-> encontrado:', miId);
+      }
+      
+      // Si aún no tenemos miId, buscar por color
+      if (miId === undefined && miInfo) {
+        miId = jugadoresTurno.find(j => j.color === miInfo.color)?.id;
+        console.log('🔍 Buscando miId por color:', miInfo.color, '-> encontrado:', miId);
       }
       
       // Si aún no tenemos miId y somos admin, usamos el primer jugador
       if (miId === undefined && esAdmin && jugadoresTurno.length > 0) {
         miId = 0; // El admin suele ser el primer jugador
+        console.log('🔍 Usando miId=0 para admin');
+      }
+      
+      // FALLBACK: Si aún no tenemos miId pero tenemos miInfo, forzar navegación
+      if (miId === undefined && miInfo && jugadoresTurno.length > 0) {
+        console.log('⚠️ FALLBACK: No se encontró miId, buscando por cualquier coincidencia');
+        const miJugador = jugadoresTurno.find((j: any) => 
+          j.name === miInfo.nombre || j.color === miInfo.color
+        );
+        if (miJugador) {
+          miId = miJugador.id;
+          console.log('🔍 Fallback encontró jugador:', miJugador);
+        } else {
+          // Último recurso: usar el índice basado en el color
+          const colorIndex = jugadoresTurno.findIndex((j: any) => j.color === miInfo.color);
+          if (colorIndex >= 0) {
+            miId = jugadoresTurno[colorIndex].id;
+            console.log('🔍 Fallback por índice de color:', colorIndex, '-> id:', miId);
+          }
+        }
       }
       
       if (typeof miId === 'number') {
