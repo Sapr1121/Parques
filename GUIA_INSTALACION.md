@@ -88,7 +88,23 @@ npm run dev
 
 ---
 
-## 🌐 URLs del Sistema
+## 🗄️ Base de Datos
+
+El proyecto utiliza **SQLite3** para almacenar:
+- 👤 **Usuarios** - Registro y autenticación
+- 📊 **Estadísticas** - Historial de partidas y stats por jugador
+- � **Partidas** - Registro de juegos completados
+
+**Ubicación:** `pythonserver/database/parques.db`
+
+**Nota:** 
+- ✅ SQLite3 viene incluido con Python, **no requiere instalación**
+- ✅ La base de datos se crea automáticamente al iniciar el servidor
+- ✅ Los archivos `.db` están en `.gitignore` para proteger datos
+
+---
+
+## �🌐 URLs del Sistema
 
 | Servicio | URL | Descripción |
 |----------|-----|-------------|
@@ -96,6 +112,7 @@ npm run dev
 | **Backend** | http://localhost:3001 | API REST (Node.js + Express) |
 | **Python Game Server** | ws://localhost:8001 | Servidor WebSocket del juego |
 | **Registry Server** | tcp://localhost:9000 | Servidor de registro de salas |
+| **Database** | `pythonserver/database/parques.db` | SQLite3 (local) |
 
 ---
 
