@@ -11,7 +11,7 @@ class WebSocketService {
     this.url = url;
   }
 
-  connect(playerName: string, playerColor?: string): Promise<void> {
+  connect(playerName: string, playerColor?: string, usuarioId?: number): Promise<void> {
     return new Promise((resolve, reject) => {
       console.log('🔄 connect() llamado, estado actual:', this.socket?.readyState);
       
@@ -29,6 +29,7 @@ class WebSocketService {
           tipo: "CONECTAR",
           nombre: playerName,
           ...(playerColor && { color: playerColor }),
+          ...(usuarioId && { usuario_id: usuarioId }),
         };
         this.send(msg);
         this.emit("open", null);

@@ -164,14 +164,15 @@ class ParchisServer:
                         # ============ PROCESAR MSG_CONECTAR ============
                         nombre = mensaje.get("nombre", "").strip()
                         color_elegido = mensaje.get("color", None)  # 🆕 Obtener color del mensaje
+                        usuario_id = mensaje.get("usuario_id", None)  # 🆕 ID de usuario de la BD
                         
                         if not nombre:
                             nombre = f"Jugador_{websocket.remote_address[1]}"
                         
-                        logger.info(f"Cliente {addr} solicita conectarse como '{nombre}' con color '{color_elegido}'")
+                        logger.info(f"Cliente {addr} solicita conectarse como '{nombre}' con color '{color_elegido}' (usuario_id={usuario_id})")
                         
-                        # Agregar jugador CON el color elegido
-                        color, error, es_admin, es_host = self.game_manager.agregar_jugador(websocket, nombre, color_elegido)
+                        # Agregar jugador CON el color elegido y usuario_id
+                        color, error, es_admin, es_host = self.game_manager.agregar_jugador(websocket, nombre, color_elegido, usuario_id)
                         
                         if error:
                             logger.warning(f"{nombre} no pudo conectarse: {error}")
@@ -448,6 +449,61 @@ class ParchisServer:
             await self.enviar_directo(websocket, respuesta)
     
     # ========== FIN MÉTODOS DE AUTENTICACIÓN ==========
+
+    # ========== MÉTODOS DE ESTADÍSTICAS ==========
+    
+    async def registrar_fin_partida(self, websocket_ganador):
+        """
+        Registra el fin de partida en la base de datos.
+        - El ganador recibe VICTORIA
+        - Los demás jugadores reciben DERROTA
+        """
+        try:
+            info_ganador = self.game_manager.clientes.get(websocket_ganador)
+            if not info_ganador:
+                logger.warning("⚠️ No se encontró info del ganador para registrar estadísticas")
+                return
+            
+            jugadores_totales = len(self.game_manager.clientes)
+            
+            # Registrar para cada jugador
+            for ws, info in self.game_manager.clientes.items():
+                usuario_id = info.get("usuario_id")
+                
+                if not usuario_id:
+                    logger.debug(f"⏭️ Jugador {info['nombre']} no tiene usuario_id (invitado), omitiendo registro")
+                    continue
+                
+                # Determinar resultado
+                es_ganador = ws == websocket_ganador
+                resultado = "VICTORIA" if es_ganador else "DERROTA"
+                
+                # Contar fichas en meta del jugador
+                jugador = info.get("jugador")
+                fichas_meta = 0
+                if jugador:
+                    fichas_meta = sum(1 for f in jugador.fichas if f.estado == proto.ESTADO_META)
+                
+                # Registrar en base de datos
+                exito = self.db_manager.registrar_partida(
+                    usuario_id=usuario_id,
+                    resultado=resultado,
+                    color=info["color"],
+                    fichas_meta=fichas_meta,
+                    turnos=0,  # TODO: Implementar contador de turnos si es necesario
+                    tiempo=0,  # TODO: Implementar tiempo de juego si es necesario
+                    jugadores=jugadores_totales
+                )
+                
+                if exito:
+                    logger.info(f"✅ Estadísticas registradas para {info['nombre']}: {resultado}")
+                else:
+                    logger.warning(f"❌ Error registrando estadísticas para {info['nombre']}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error en registrar_fin_partida: {e}", exc_info=True)
+    
+    # ========== FIN MÉTODOS DE ESTADÍSTICAS ==========
 
     async def procesar_mensaje(self, websocket, mensaje):
         """Procesa los diferentes tipos de mensajes del cliente"""
@@ -813,6 +869,8 @@ class ParchisServer:
         if self.game_manager.verificar_victoria(websocket):
             await self.broadcast(proto.mensaje_victoria(info["nombre"], info["color"]))
             logger.info(f"¡{info['nombre']} ({info['color']}) HA GANADO!")
+            # 🆕 Registrar estadísticas de la partida
+            await self.registrar_fin_partida(websocket)
             self.game_manager.juego_terminado = True
             return
         
@@ -1108,6 +1166,8 @@ class ParchisServer:
             if resultado.get("ha_ganado"):
                 await self.broadcast(proto.mensaje_victoria(info["nombre"], info["color"]))
                 logger.info(f"🎊 ¡{info['nombre']} ha ganado con el premio de 3 dobles!")
+                # 🆕 Registrar estadísticas de la partida
+                await self.registrar_fin_partida(websocket)
                 return
             
             # Avanzar turno

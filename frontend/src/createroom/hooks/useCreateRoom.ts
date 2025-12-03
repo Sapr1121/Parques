@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createRoom } from '../services/python';
 import { useSocket } from '../../contexts/SocketContext';
+import { obtenerSesion } from '../../auth/services/authService';
 
 export const useCreateRoom = () => {
   const { connect, connected } = useSocket();
@@ -28,13 +29,17 @@ export const useCreateRoom = () => {
       console.log('⏳ Esperando a que el servidor se inicie...');
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
+      // Obtener usuario_id de la sesión
+      const sesion = obtenerSesion();
+      const usuarioId = sesion?.usuario_id;
+
       // 3. Conectar WebSocket al servidor Python con reintentos
       let retries = 3;
       let isConnected = false;
       while (retries > 0 && !isConnected) {
         try {
           console.log(`🔌 Intentando conectar... (intentos restantes: ${retries})`);
-          await connect(playerName, playerColor);
+          await connect(playerName, playerColor, undefined, usuarioId);
           isConnected = true;
           console.log('✅ Conectado al servidor');
         } catch {
