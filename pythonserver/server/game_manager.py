@@ -557,8 +557,8 @@ class GameManager:
         """Lanza los dados - DEBE LLAMARSE CON LOCK EXTERNO"""
         logger.debug("🎲 Generando dados...")
         
-        self.ultimo_dado1 = random.randint(1, 1)
-        self.ultimo_dado2 = random.randint(1, 2)
+        self.ultimo_dado1 = random.randint(1, 6)
+        self.ultimo_dado2 = random.randint(1, 6)
         self.ultima_suma = self.ultimo_dado1 + self.ultimo_dado2
         self.ultimo_es_doble = self.ultimo_dado1 == self.ultimo_dado2
         self.dados_lanzados = True
