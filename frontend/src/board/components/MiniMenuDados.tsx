@@ -1,6 +1,37 @@
 import React from 'react';
 import type { ColorJugador } from '../types/gameTypes';
-import { esCasillaSalida } from '../utils/posiciones';
+
+// Casillas de entrada a meta por color (donde entran al camino final)
+const ENTRADAS_META: Record<ColorJugador, number> = {
+  rojo: 33,    // Casilla segura antes de entrar al camino rojo
+  azul: 16,    // Casilla segura antes de entrar al camino azul
+  verde: 50,   // Casilla segura antes de entrar al camino verde
+  amarillo: 67 // Casilla segura antes de entrar al camino amarillo
+};
+
+/**
+ * Calcula cuántos pasos faltan para que una ficha EN_JUEGO llegue a su entrada de meta.
+ * Retorna null si la ficha no está cerca (más de 8 pasos).
+ */
+function calcularPasosAEntradaMeta(posicion: number, color: ColorJugador): number | null {
+  const entradaMeta = ENTRADAS_META[color];
+  let pasosHastaEntrada = 0;
+  
+  // Si la ficha está antes de su entrada de meta (sin dar la vuelta)
+  if (posicion <= entradaMeta) {
+    pasosHastaEntrada = entradaMeta - posicion;
+  } else {
+    // Si la ficha pasó su entrada, debe dar la vuelta al tablero (68 casillas totales)
+    pasosHastaEntrada = (68 - posicion) + entradaMeta;
+  }
+  
+  // Solo considerar si está cerca (8 pasos o menos, ya que luego tiene 7 casillas de camino meta)
+  if (pasosHastaEntrada <= 8) {
+    return pasosHastaEntrada;
+  }
+  
+  return null;
+}
 
 // Colores de las fichas
 const COLORES: Record<ColorJugador, string> = {
@@ -9,6 +40,13 @@ const COLORES: Record<ColorJugador, string> = {
   verde: '#228B22',
   amarillo: '#DAA520'
 };
+
+interface Ficha {
+  id: number;
+  estado: string;
+  posicion?: number;
+  posicion_meta?: number | null;
+}
 
 interface MiniMenuDadosProps {
   visible: boolean;
@@ -23,6 +61,8 @@ interface MiniMenuDadosProps {
   fichaEstado?: string;
   posicionMeta?: number | undefined;
   fichaPosicion?: number | undefined;
+  todasLasFichas?: Ficha[]; // Todas las fichas del jugador actual
+  dadosUsados?: number[]; // Array de dados ya usados [1, 2]
   onSeleccionarDado: (dado: 1 | 2 | 3) => void;
   onCerrar: () => void;
 }
@@ -40,6 +80,8 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
   fichaEstado,
   posicionMeta,
   fichaPosicion,
+  todasLasFichas = [],
+  dadosUsados = [],
   onSeleccionarDado,
   onCerrar
 }) => {
@@ -47,6 +89,47 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
 
   const colorFicha = COLORES[fichaColor];
   const ambosDisponibles = !dado1Usado && !dado2Usado;
+
+  // ⭐ SUMA OBLIGATORIA: Contar fichas movibles REALES (que puedan usar AL MENOS un dado)
+  // Replicando la lógica del backend (game_manager.py líneas 781-796)
+  let fichasMovibles = 0;
+  
+  for (const f of todasLasFichas) {
+    // Ignorar fichas bloqueadas (en cárcel) o que ya llegaron a META
+    if (f.estado === 'BLOQUEADO' || f.estado === 'META') {
+      continue;
+    }
+    
+    // Fichas EN_JUEGO en el tablero principal SIEMPRE pueden moverse
+    if (f.estado === 'EN_JUEGO' && (f.posicion_meta === undefined || f.posicion_meta === null)) {
+      fichasMovibles += 1;
+    }
+    // Fichas en CAMINO_META: solo contar si pueden usar AL MENOS un dado individual
+    else if (f.estado === 'CAMINO_META' && f.posicion_meta !== undefined && f.posicion_meta !== null) {
+      const pasosRestantesF = 7 - f.posicion_meta;
+      // Verificar si puede usar algún dado individual (no suma)
+      if (dado1 <= pasosRestantesF || dado2 <= pasosRestantesF) {
+        fichasMovibles += 1;
+      }
+    }
+  }
+
+  // Verificar si debemos forzar el uso de la suma
+  const enCaminoMeta = fichaEstado === 'CAMINO_META';
+  const fichaCercaMeta = fichaPosicion !== undefined 
+    ? calcularPasosAEntradaMeta(fichaPosicion, fichaColor) !== null
+    : false;
+  
+  // ⭐ FORZAR SUMA cuando:
+  // - Solo hay 1 ficha movible
+  // - La ficha NO está en camino a meta
+  // - La ficha NO está cerca de su entrada a meta (8 pasos o menos)
+  // - NO se han usado dados aún (ambos disponibles)
+  const debeUsarSumaObligatoria = 
+    fichasMovibles === 1 && 
+    !enCaminoMeta && 
+    !fichaCercaMeta && 
+    dadosUsados.length === 0;
 
   // ⭐ Detectar si el menú debe aparecer ABAJO en lugar de arriba
   // Esto incluye:
@@ -61,21 +144,35 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
     // O simplemente el menú está muy arriba en la pantalla
     (position.y < 120);
 
-  // Calcular pasos restantes:
-  // - Si la ficha está en CAMINO_META: pasos = 7 - posicion_meta
-  // - Si la ficha está EN_JUEGO y está justo en la casilla de salida para su color: faltan 8 pasos
+  // Calcular pasos restantes para llegar a la meta
   let pasosRestantes: number | null = null;
+  let mensaje: string = '';
+  
   if (fichaEstado === 'CAMINO_META' && posicionMeta !== undefined && posicionMeta !== null) {
+    // Caso 1: Ficha YA está en el camino final a la meta (sv1, sv2, ..., sv8/META)
+    // Cada posicion_meta representa una casilla del camino: 0=sv1, 1=sv2, ..., 7=sv8/META
     pasosRestantes = Math.max(0, 7 - posicionMeta);
+    mensaje = `Faltan ${pasosRestantes} paso(s) para META`;
   } else if (fichaEstado === 'EN_JUEGO' && fichaPosicion !== undefined && fichaPosicion !== null) {
-    if (esCasillaSalida(fichaPosicion, fichaColor)) {
-      pasosRestantes = 8;
+    // Caso 2: Ficha está en el tablero principal, cerca de su entrada a meta
+    const pasosAEntrada = calcularPasosAEntradaMeta(fichaPosicion, fichaColor);
+    
+    if (pasosAEntrada !== null) {
+      // La ficha está cerca de su entrada (8 pasos o menos)
+      // Total de pasos = pasos hasta entrada + 8 pasos del camino meta
+      pasosRestantes = pasosAEntrada + 8;
+      mensaje = `A ${pasosAEntrada} paso(s) de entrar al camino final (+8 a META)`;
     }
+    // Si pasosAEntrada es null, la ficha está lejos y puede moverse libremente
   }
 
   const dado1DisabledByMeta = pasosRestantes !== null ? dado1 > pasosRestantes : false;
   const dado2DisabledByMeta = pasosRestantes !== null ? dado2 > pasosRestantes : false;
   const sumaDisabledByMeta = pasosRestantes !== null ? suma > pasosRestantes : false;
+
+  // ⭐ BLOQUEAR dados individuales si debe usar suma obligatoria
+  const dado1Disabled = dado1Usado || dado1DisabledByMeta || debeUsarSumaObligatoria;
+  const dado2Disabled = dado2Usado || dado2DisabledByMeta || debeUsarSumaObligatoria;
 
   return (
     <>
@@ -116,8 +213,17 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
         </div>
 
         {/* Mostrar pasos restantes si aplica */}
-        {pasosRestantes !== null && (
-          <div className="text-center text-sm text-gray-600 mb-2">Faltan {pasosRestantes} paso(s) para META</div>
+        {pasosRestantes !== null && mensaje && (
+          <div className="text-center text-sm text-gray-600 mb-2 px-2">
+            {mensaje}
+          </div>
+        )}
+
+        {/* Mostrar mensaje de suma obligatoria */}
+        {debeUsarSumaObligatoria && ambosDisponibles && (
+          <div className="text-center text-sm text-purple-600 font-semibold mb-2 px-2 bg-purple-50 rounded py-1">
+            ⚠️ Debes usar la SUMA (solo 1 ficha disponible)
+          </div>
         )}
 
         {/* Opciones de dados */}
@@ -125,9 +231,9 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
           {/* Dado 1 */}
           <button
             onClick={() => onSeleccionarDado(1)}
-            disabled={dado1Usado || dado1DisabledByMeta}
+            disabled={dado1Disabled}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
-              ${dado1Usado || dado1DisabledByMeta
+              ${dado1Disabled
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-700 hover:scale-105 cursor-pointer'
               }`}
@@ -141,9 +247,9 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
           {/* Dado 2 */}
           <button
             onClick={() => onSeleccionarDado(2)}
-            disabled={dado2Usado || dado2DisabledByMeta}
+            disabled={dado2Disabled}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
-              ${dado2Usado || dado2DisabledByMeta
+              ${dado2Disabled
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-green-50 hover:bg-green-100 text-green-700 hover:scale-105 cursor-pointer'
               }`}
