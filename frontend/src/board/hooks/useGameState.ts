@@ -148,21 +148,8 @@ export const useGameState = (
         // Nueva tirada: cancelar cualquier permiso previo de relanzar
         setPuedeRelanzar(false);
         
-        // AUTOMATICO: Si es mi turno, son dobles, y TODAS las fichas están en cárcel
-        // enviar SACAR_TODAS automáticamente (como el cliente Python)
-        if (esMiTurno && msg.es_doble && miColor) {
-          const miJugador = jugadores.find(j => j.color === miColor);
-          if (miJugador) {
-            const todasEnCarcel = miJugador.fichas.every(f => f.estado === 'BLOQUEADO');
-            if (todasEnCarcel && miJugador.fichas.length === 4) {
-              console.log('🔓 Todas en cárcel + dobles! Enviando SACAR_TODAS automáticamente...');
-              // Pequeño delay para que el UI muestre los dados primero
-              setTimeout(() => {
-                send({ tipo: 'SACAR_TODAS' });
-              }, 500);
-            }
-          }
-        }
+        // ⭐ NOTA: El servidor ya libera automáticamente las fichas de la cárcel
+        // cuando salen dobles, NO necesitamos enviar SACAR_TODAS desde aquí
         break;
       }
       

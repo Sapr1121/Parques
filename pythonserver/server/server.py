@@ -702,6 +702,9 @@ class ParchisServer:
             # Si hay dobles pero NO es premio, intentar sacar fichas de la cárcel
             if es_doble:
                 logger.info(f"Dobles detectados - liberando TODAS las fichas automáticamente...")
+                
+                # ⭐ DELAY para que el cliente procese los dados antes de las acciones
+                await asyncio.sleep(0.5)
             
                 exito, resultado = self.game_manager.sacar_todas_fichas_carcel(websocket)
             
@@ -719,8 +722,12 @@ class ParchisServer:
                             hasta=resultado.get("posicion", 0),
                             accion="liberar_ficha"
                         ))
+                        await asyncio.sleep(0.05)  # Pequeño delay entre cada ficha
                 
                     logger.info(f"{len(fichas_liberadas)} fichas liberadas para {info['nombre']}")
+                    
+                    # ⭐ DELAY antes de enviar el tablero actualizado
+                    await asyncio.sleep(0.3)
                     await self.broadcast_tablero()
                 
                     await self.broadcast(proto.crear_mensaje(
@@ -729,7 +736,7 @@ class ParchisServer:
                     ))
                     
                     logger.info(f"{info['nombre']} mantiene el turno - reenviando notificación")
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.2)
                     await self.broadcast(proto.mensaje_turno(info["nombre"], info["color"]))
                 
                 # ⭐ NUEVO: Verificar si puede hacer alguna acción CON DOBLES después de sacar/no tener fichas en cárcel
@@ -1092,28 +1099,40 @@ class ParchisServer:
     
     async def broadcast(self, mensaje, excluir=None):
         """Envía un mensaje a todos los clientes conectados"""
-        logger.debug(f"BROADCAST a {len(self.game_manager.clientes)} clientes: {mensaje}")
+        # ⭐ CRÍTICO: Usar clientes_activos en lugar de game_manager.clientes
+        # para asegurar que solo enviamos a conexiones válidas
+        clientes_a_enviar = list(self.clientes_activos)
+        logger.debug(f"BROADCAST a {len(clientes_a_enviar)} clientes activos: {mensaje.get('tipo', mensaje)}")
         
-        if not self.game_manager.clientes:
-            logger.warning("No hay clientes para broadcast")
+        if not clientes_a_enviar:
+            logger.warning("No hay clientes activos para broadcast")
             return
         
         clientes_desconectados = []
         enviados_exitosos = 0
         
-        for websocket in list(self.game_manager.clientes.keys()):
+        for websocket in clientes_a_enviar:
             if websocket != excluir:
                 try:
-                    await self.enviar(websocket, mensaje)
+                    # Enviar directamente sin verificar clientes_activos de nuevo
+                    mensaje_json = json.dumps(mensaje, ensure_ascii=False)
+                    await websocket.send(mensaje_json)
                     enviados_exitosos += 1
+                    logger.debug(f"✅ Broadcast enviado a {websocket.remote_address}")
+                except websockets.exceptions.ConnectionClosed:
+                    logger.warning(f"❌ Cliente desconectado durante broadcast: {websocket.remote_address}")
+                    clientes_desconectados.append(websocket)
                 except Exception as e:
-                    logger.error(f"Error en broadcast: {e}")
+                    logger.error(f"Error en broadcast a {websocket.remote_address}: {e}")
                     clientes_desconectados.append(websocket)
         
-        logger.debug(f"Broadcast completado: {enviados_exitosos} enviados exitosamente")
+        logger.info(f"📡 Broadcast completado: {enviados_exitosos}/{len(clientes_a_enviar)} enviados")
         
         for websocket in clientes_desconectados:
-            await self.limpiar_cliente(websocket, "Desconocido")
+            self.clientes_activos.discard(websocket)
+            if websocket in self.game_manager.clientes:
+                nombre = self.game_manager.clientes[websocket].get("nombre", "Desconocido")
+                await self.limpiar_cliente(websocket, nombre)
         
     async def procesar_elegir_ficha_premio(self, websocket, mensaje):
         """Procesa la elección de ficha para el premio de 3 dobles"""

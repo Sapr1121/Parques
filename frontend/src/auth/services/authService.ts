@@ -2,7 +2,16 @@
  * Servicio de autenticación - Comunicación con el servidor de Python
  */
 
-const WS_URL = 'ws://localhost:8001';
+// ⭐ Usar hostname dinámico para soportar múltiples computadores en red
+function getWsUrl(): string {
+  // Si hay variable de entorno, usarla
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
+  }
+  // Si no, usar el hostname actual (funciona en LAN)
+  const hostname = window.location.hostname || 'localhost';
+  return `ws://${hostname}:8001`;
+}
 
 interface RegistroResponse {
   exito: boolean;
@@ -58,7 +67,9 @@ async function enviarMensajeWS(mensaje: any): Promise<any> {
     };
     
     try {
-      ws = new WebSocket(WS_URL);
+      const wsUrl = getWsUrl();
+      console.log('[Auth] Conectando a:', wsUrl);
+      ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log('[Auth] WebSocket conectado, enviando mensaje:', mensaje.tipo);

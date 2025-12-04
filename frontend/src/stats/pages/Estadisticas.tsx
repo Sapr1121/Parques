@@ -180,8 +180,6 @@ export default function Estadisticas() {
                     <th className="pb-3 text-center">Color</th>
                     <th className="pb-3 text-center">Resultado</th>
                     <th className="pb-3 text-center">Fichas Meta</th>
-                    <th className="pb-3 text-center">Turnos</th>
-                    <th className="pb-3 text-center">Tiempo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -206,8 +204,6 @@ export default function Estadisticas() {
                         {partida.resultado}
                       </td>
                       <td className="py-3 text-center">{partida.fichas_en_meta}/4</td>
-                      <td className="py-3 text-center">{partida.turnos_jugados}</td>
-                      <td className="py-3 text-center">{formatTiempo(partida.tiempo_juego)}</td>
                     </tr>
                   ))}
                 </tbody>
