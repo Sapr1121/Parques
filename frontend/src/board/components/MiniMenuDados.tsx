@@ -1,6 +1,5 @@
 import React from 'react';
 import type { ColorJugador } from '../types/gameTypes';
-import { esCasillaSalida } from '../utils/posiciones';
 
 // Colores de las fichas
 const COLORES: Record<ColorJugador, string> = {
@@ -63,15 +62,14 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
 
   // Calcular pasos restantes:
   // - Si la ficha está en CAMINO_META: pasos = 7 - posicion_meta
-  // - Si la ficha está EN_JUEGO y está justo en la casilla de salida para su color: faltan 8 pasos
+  // - Si la ficha está EN_JUEGO: NO validar, puede moverse libremente por el tablero
   let pasosRestantes: number | null = null;
   if (fichaEstado === 'CAMINO_META' && posicionMeta !== undefined && posicionMeta !== null) {
+    // Solo cuando está en el camino final a la meta, limitar movimientos
     pasosRestantes = Math.max(0, 7 - posicionMeta);
-  } else if (fichaEstado === 'EN_JUEGO' && fichaPosicion !== undefined && fichaPosicion !== null) {
-    if (esCasillaSalida(fichaPosicion, fichaColor)) {
-      pasosRestantes = 8;
-    }
   }
+  // ✅ ELIMINADO: La validación incorrecta de "faltan 8 pasos desde la salida"
+  // Las fichas EN_JUEGO pueden moverse libremente por el tablero
 
   const dado1DisabledByMeta = pasosRestantes !== null ? dado1 > pasosRestantes : false;
   const dado2DisabledByMeta = pasosRestantes !== null ? dado2 > pasosRestantes : false;
