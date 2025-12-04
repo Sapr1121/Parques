@@ -41,6 +41,13 @@ const COLORES: Record<ColorJugador, string> = {
   amarillo: '#DAA520'
 };
 
+interface Ficha {
+  id: number;
+  estado: string;
+  posicion?: number;
+  posicion_meta?: number | null;
+}
+
 interface MiniMenuDadosProps {
   visible: boolean;
   position: { x: number; y: number };
@@ -54,6 +61,8 @@ interface MiniMenuDadosProps {
   fichaEstado?: string;
   posicionMeta?: number | undefined;
   fichaPosicion?: number | undefined;
+  todasLasFichas?: Ficha[]; // Todas las fichas del jugador actual
+  dadosUsados?: number[]; // Array de dados ya usados [1, 2]
   onSeleccionarDado: (dado: 1 | 2 | 3) => void;
   onCerrar: () => void;
 }
@@ -71,6 +80,8 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
   fichaEstado,
   posicionMeta,
   fichaPosicion,
+  todasLasFichas = [],
+  dadosUsados = [],
   onSeleccionarDado,
   onCerrar
 }) => {
@@ -78,6 +89,47 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
 
   const colorFicha = COLORES[fichaColor];
   const ambosDisponibles = !dado1Usado && !dado2Usado;
+
+  // ⭐ SUMA OBLIGATORIA: Contar fichas movibles REALES (que puedan usar AL MENOS un dado)
+  // Replicando la lógica del backend (game_manager.py líneas 781-796)
+  let fichasMovibles = 0;
+  
+  for (const f of todasLasFichas) {
+    // Ignorar fichas bloqueadas (en cárcel) o que ya llegaron a META
+    if (f.estado === 'BLOQUEADO' || f.estado === 'META') {
+      continue;
+    }
+    
+    // Fichas EN_JUEGO en el tablero principal SIEMPRE pueden moverse
+    if (f.estado === 'EN_JUEGO' && (f.posicion_meta === undefined || f.posicion_meta === null)) {
+      fichasMovibles += 1;
+    }
+    // Fichas en CAMINO_META: solo contar si pueden usar AL MENOS un dado individual
+    else if (f.estado === 'CAMINO_META' && f.posicion_meta !== undefined && f.posicion_meta !== null) {
+      const pasosRestantesF = 7 - f.posicion_meta;
+      // Verificar si puede usar algún dado individual (no suma)
+      if (dado1 <= pasosRestantesF || dado2 <= pasosRestantesF) {
+        fichasMovibles += 1;
+      }
+    }
+  }
+
+  // Verificar si debemos forzar el uso de la suma
+  const enCaminoMeta = fichaEstado === 'CAMINO_META';
+  const fichaCercaMeta = fichaPosicion !== undefined 
+    ? calcularPasosAEntradaMeta(fichaPosicion, fichaColor) !== null
+    : false;
+  
+  // ⭐ FORZAR SUMA cuando:
+  // - Solo hay 1 ficha movible
+  // - La ficha NO está en camino a meta
+  // - La ficha NO está cerca de su entrada a meta (8 pasos o menos)
+  // - NO se han usado dados aún (ambos disponibles)
+  const debeUsarSumaObligatoria = 
+    fichasMovibles === 1 && 
+    !enCaminoMeta && 
+    !fichaCercaMeta && 
+    dadosUsados.length === 0;
 
   // ⭐ Detectar si el menú debe aparecer ABAJO en lugar de arriba
   // Esto incluye:
@@ -117,6 +169,10 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
   const dado1DisabledByMeta = pasosRestantes !== null ? dado1 > pasosRestantes : false;
   const dado2DisabledByMeta = pasosRestantes !== null ? dado2 > pasosRestantes : false;
   const sumaDisabledByMeta = pasosRestantes !== null ? suma > pasosRestantes : false;
+
+  // ⭐ BLOQUEAR dados individuales si debe usar suma obligatoria
+  const dado1Disabled = dado1Usado || dado1DisabledByMeta || debeUsarSumaObligatoria;
+  const dado2Disabled = dado2Usado || dado2DisabledByMeta || debeUsarSumaObligatoria;
 
   return (
     <>
@@ -163,14 +219,21 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
           </div>
         )}
 
+        {/* Mostrar mensaje de suma obligatoria */}
+        {debeUsarSumaObligatoria && ambosDisponibles && (
+          <div className="text-center text-sm text-purple-600 font-semibold mb-2 px-2 bg-purple-50 rounded py-1">
+            ⚠️ Debes usar la SUMA (solo 1 ficha disponible)
+          </div>
+        )}
+
         {/* Opciones de dados */}
         <div className="space-y-2">
           {/* Dado 1 */}
           <button
             onClick={() => onSeleccionarDado(1)}
-            disabled={dado1Usado || dado1DisabledByMeta}
+            disabled={dado1Disabled}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
-              ${dado1Usado || dado1DisabledByMeta
+              ${dado1Disabled
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-700 hover:scale-105 cursor-pointer'
               }`}
@@ -184,9 +247,9 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
           {/* Dado 2 */}
           <button
             onClick={() => onSeleccionarDado(2)}
-            disabled={dado2Usado || dado2DisabledByMeta}
+            disabled={dado2Disabled}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all
-              ${dado2Usado || dado2DisabledByMeta
+              ${dado2Disabled
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-green-50 hover:bg-green-100 text-green-700 hover:scale-105 cursor-pointer'
               }`}
