@@ -32,7 +32,20 @@ export const CreateRoom: React.FC = () => {
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(roomCode);
+    // Método alternativo que funciona en HTTP (no solo HTTPS)
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(roomCode);
+    } else {
+      // Fallback para HTTP
+      const textArea = document.createElement('textarea');
+      textArea.value = roomCode;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -45,17 +58,17 @@ export const CreateRoom: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '1rem',
+        padding: 'clamp(0.5rem, 2vw, 1rem)',
         position: 'relative',
         overflow: 'hidden'
       }}>
         {/* Círculos decorativos */}
         <div style={{
           position: 'absolute',
-          top: '40px',
-          left: '40px',
-          width: '128px',
-          height: '128px',
+          top: '20px',
+          left: '20px',
+          width: 'clamp(80px, 15vw, 128px)',
+          height: 'clamp(80px, 15vw, 128px)',
           background: 'rgba(251, 191, 36, 0.2)',
           borderRadius: '50%',
           filter: 'blur(60px)',
@@ -63,10 +76,10 @@ export const CreateRoom: React.FC = () => {
         }} />
         <div style={{
           position: 'absolute',
-          bottom: '80px',
-          right: '80px',
-          width: '160px',
-          height: '160px',
+          bottom: '40px',
+          right: '40px',
+          width: 'clamp(100px, 18vw, 160px)',
+          height: 'clamp(100px, 18vw, 160px)',
           background: 'rgba(96, 165, 250, 0.2)',
           borderRadius: '50%',
           filter: 'blur(60px)',
@@ -76,39 +89,39 @@ export const CreateRoom: React.FC = () => {
         <div style={{
           background: 'rgba(255, 255, 255, 0.1)',
           backdropFilter: 'blur(20px)',
-          borderRadius: '2.5rem',
-          padding: '3rem',
+          borderRadius: 'clamp(1.5rem, 4vw, 2.5rem)',
+          padding: 'clamp(1.5rem, 4vw, 3rem)',
           textAlign: 'center',
           color: 'white',
           maxWidth: '500px',
           width: '100%',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-          border: '4px solid rgba(255, 255, 255, 0.3)',
+          border: '3px solid rgba(255, 255, 255, 0.3)',
           position: 'relative',
           zIndex: 10
         }}>
           <div style={{
-            marginBottom: '2rem',
+            marginBottom: 'clamp(1rem, 3vw, 2rem)',
             display: 'flex',
             justifyContent: 'center'
           }}>
             <div style={{
               background: 'linear-gradient(135deg, #34d399, #10b981)',
               borderRadius: '50%',
-              padding: '1rem',
+              padding: 'clamp(0.75rem, 2vw, 1rem)',
               boxShadow: '0 10px 30px rgba(52, 211, 153, 0.5)',
               animation: 'bounce 1s infinite'
             }}>
-              <svg style={{ width: '64px', height: '64px' }} fill="none" stroke="white" viewBox="0 0 24 24">
+              <svg style={{ width: 'clamp(40px, 10vw, 64px)', height: 'clamp(40px, 10vw, 64px)' }} fill="none" stroke="white" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
               </svg>
             </div>
           </div>
 
           <h2 style={{
-            fontSize: '3rem',
+            fontSize: 'clamp(1.75rem, 6vw, 3rem)',
             fontWeight: '900',
-            marginBottom: '1rem',
+            marginBottom: 'clamp(0.5rem, 2vw, 1rem)',
             background: 'linear-gradient(90deg, #fef08a, #fbcfe8)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
@@ -119,8 +132,8 @@ export const CreateRoom: React.FC = () => {
           </h2>
 
           <p style={{
-            fontSize: '1.25rem',
-            marginBottom: '1.5rem',
+            fontSize: 'clamp(1rem, 3vw, 1.25rem)',
+            marginBottom: 'clamp(1rem, 2vw, 1.5rem)',
             fontWeight: '600',
             color: 'rgba(255, 255, 255, 0.9)'
           }}>
@@ -130,21 +143,23 @@ export const CreateRoom: React.FC = () => {
           <div style={{
             background: 'linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))',
             backdropFilter: 'blur(10px)',
-            borderRadius: '2rem',
-            padding: '2rem',
-            marginBottom: '1.5rem',
-            border: '4px solid rgba(255, 255, 255, 0.4)',
+            borderRadius: 'clamp(1rem, 3vw, 2rem)',
+            padding: 'clamp(1rem, 3vw, 2rem)',
+            marginBottom: 'clamp(1rem, 2vw, 1.5rem)',
+            border: '3px solid rgba(255, 255, 255, 0.4)',
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
             transition: 'transform 0.3s',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            overflow: 'hidden'
           }}>
             <div style={{
-              fontSize: '4rem',
+              fontSize: 'clamp(1.75rem, 8vw, 4rem)',
               fontWeight: '900',
-              letterSpacing: '0.1em',
+              letterSpacing: 'clamp(0.05em, 1vw, 0.1em)',
               color: '#fde047',
               textShadow: '0 0 30px rgba(253, 224, 71, 0.5)',
-              animation: 'pulse 2s infinite'
+              animation: 'pulse 2s infinite',
+              wordBreak: 'break-all'
             }}>
               {roomCode}
             </div>
@@ -157,14 +172,14 @@ export const CreateRoom: React.FC = () => {
               background: 'linear-gradient(90deg, #fbbf24, #fb923c)',
               color: '#1f2937',
               fontWeight: '900',
-              fontSize: '1.125rem',
-              padding: '1rem 2rem',
-              borderRadius: '2rem',
-              border: '4px solid #fcd34d',
+              fontSize: 'clamp(0.9rem, 3vw, 1.125rem)',
+              padding: 'clamp(0.75rem, 2vw, 1rem) clamp(1rem, 3vw, 2rem)',
+              borderRadius: 'clamp(1rem, 3vw, 2rem)',
+              border: '3px solid #fcd34d',
               cursor: 'pointer',
               transition: 'transform 0.3s',
-              boxShadow: '0 20px 40px rgba(251, 191, 36, 0.5)',
-              marginBottom: '1rem',
+              boxShadow: '0 10px 30px rgba(251, 191, 36, 0.5)',
+              marginBottom: 'clamp(0.75rem, 2vw, 1rem)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -233,19 +248,19 @@ export const CreateRoom: React.FC = () => {
             disabled={!connected}
             style={{
               width: '100%',
-              marginTop: '1.5rem',
+              marginTop: 'clamp(1rem, 2vw, 1.5rem)',
               background: connected 
                 ? 'linear-gradient(90deg, #34d399, #10b981)' 
                 : 'rgba(156, 163, 175, 0.5)',
               color: 'white',
               fontWeight: '900',
-              fontSize: '1.125rem',
-              padding: '1rem 2rem',
-              borderRadius: '2rem',
-              border: connected ? '4px solid #6ee7b7' : '4px solid rgba(156, 163, 175, 0.3)',
+              fontSize: 'clamp(0.9rem, 3vw, 1.125rem)',
+              padding: 'clamp(0.75rem, 2vw, 1rem) clamp(1rem, 3vw, 2rem)',
+              borderRadius: 'clamp(1rem, 3vw, 2rem)',
+              border: connected ? '3px solid #6ee7b7' : '3px solid rgba(156, 163, 175, 0.3)',
               cursor: connected ? 'pointer' : 'not-allowed',
               transition: 'transform 0.3s',
-              boxShadow: connected ? '0 20px 40px rgba(52, 211, 153, 0.5)' : 'none',
+              boxShadow: connected ? '0 10px 30px rgba(52, 211, 153, 0.5)' : 'none',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -282,17 +297,17 @@ export const CreateRoom: React.FC = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '1rem',
+      padding: 'clamp(0.5rem, 2vw, 1rem)',
       position: 'relative',
       overflow: 'hidden'
     }}>
       {/* Círculos decorativos */}
       <div style={{
         position: 'absolute',
-        top: '40px',
-        left: '40px',
-        width: '128px',
-        height: '128px',
+        top: '20px',
+        left: '20px',
+        width: 'clamp(80px, 15vw, 128px)',
+        height: 'clamp(80px, 15vw, 128px)',
         background: 'rgba(251, 191, 36, 0.2)',
         borderRadius: '50%',
         filter: 'blur(60px)',
@@ -300,10 +315,10 @@ export const CreateRoom: React.FC = () => {
       }} />
       <div style={{
         position: 'absolute',
-        bottom: '80px',
-        right: '80px',
-        width: '160px',
-        height: '160px',
+        bottom: '40px',
+        right: '40px',
+        width: 'clamp(100px, 18vw, 160px)',
+        height: 'clamp(100px, 18vw, 160px)',
         background: 'rgba(96, 165, 250, 0.2)',
         borderRadius: '50%',
         filter: 'blur(60px)',
@@ -313,21 +328,21 @@ export const CreateRoom: React.FC = () => {
       <div style={{
         background: 'rgba(255, 255, 255, 0.1)',
         backdropFilter: 'blur(20px)',
-        borderRadius: '2.5rem',
-        padding: '3rem',
+        borderRadius: 'clamp(1.5rem, 4vw, 2.5rem)',
+        padding: 'clamp(1.5rem, 4vw, 3rem)',
         textAlign: 'center',
         color: 'white',
         maxWidth: '600px',
         width: '100%',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-        border: '4px solid rgba(255, 255, 255, 0.3)',
+        border: '3px solid rgba(255, 255, 255, 0.3)',
         position: 'relative',
         zIndex: 10
       }}>
         <h2 style={{
-          fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+          fontSize: 'clamp(1.5rem, 5vw, 3.5rem)',
           fontWeight: '900',
-          marginBottom: '2rem',
+          marginBottom: 'clamp(1rem, 3vw, 2rem)',
           background: 'linear-gradient(90deg, #fef08a, #fbcfe8, #ddd6fe)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
@@ -338,11 +353,11 @@ export const CreateRoom: React.FC = () => {
           Crear Sala
         </h2>
 
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: 'clamp(1rem, 2vw, 1.5rem)' }}>
           <label style={{
             display: 'block',
             textAlign: 'left',
-            fontSize: '1.125rem',
+            fontSize: 'clamp(0.9rem, 2.5vw, 1.125rem)',
             fontWeight: '700',
             marginBottom: '0.5rem',
             color: 'rgba(255, 255, 255, 0.9)',
@@ -357,17 +372,18 @@ export const CreateRoom: React.FC = () => {
             maxLength={20}
             style={{
               width: '100%',
-              padding: '1rem 1.5rem',
-              borderRadius: '2rem',
+              padding: 'clamp(0.75rem, 2vw, 1rem) clamp(1rem, 2vw, 1.5rem)',
+              borderRadius: 'clamp(1rem, 3vw, 2rem)',
               background: 'rgba(255, 255, 255, 0.2)',
               color: 'white',
-              fontSize: '1.125rem',
-              border: '4px solid rgba(255, 255, 255, 0.4)',
+              fontSize: 'clamp(0.9rem, 2.5vw, 1.125rem)',
+              border: '3px solid rgba(255, 255, 255, 0.4)',
               outline: 'none',
               backdropFilter: 'blur(10px)',
               fontWeight: '600',
               boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-              transition: 'all 0.3s'
+              transition: 'all 0.3s',
+              boxSizing: 'border-box'
             }}
             onFocus={(e) => {
               e.target.style.borderColor = '#fbbf24';
@@ -380,13 +396,13 @@ export const CreateRoom: React.FC = () => {
           />
         </div>
 
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: 'clamp(1rem, 2vw, 1.5rem)' }}>
           <label style={{
             display: 'block',
             textAlign: 'left',
-            fontSize: '1.125rem',
+            fontSize: 'clamp(0.9rem, 2.5vw, 1.125rem)',
             fontWeight: '700',
-            marginBottom: '0.75rem',
+            marginBottom: 'clamp(0.5rem, 1.5vw, 0.75rem)',
             color: 'rgba(255, 255, 255, 0.9)',
             textShadow: '0 2px 4px rgba(0,0,0,0.3)'
           }}>
@@ -397,16 +413,16 @@ export const CreateRoom: React.FC = () => {
 
         {error && (
           <div style={{
-            marginBottom: '1.5rem',
+            marginBottom: 'clamp(1rem, 2vw, 1.5rem)',
             background: 'rgba(239, 68, 68, 0.3)',
             backdropFilter: 'blur(10px)',
-            border: '4px solid rgba(248, 113, 113, 0.5)',
-            borderRadius: '2rem',
-            padding: '1rem'
+            border: '3px solid rgba(248, 113, 113, 0.5)',
+            borderRadius: 'clamp(1rem, 3vw, 2rem)',
+            padding: 'clamp(0.75rem, 2vw, 1rem)'
           }}>
             <p style={{
               color: '#fee',
-              fontSize: '1rem',
+              fontSize: 'clamp(0.85rem, 2vw, 1rem)',
               fontWeight: '700',
               display: 'flex',
               alignItems: 'center',
@@ -432,16 +448,16 @@ export const CreateRoom: React.FC = () => {
               : 'linear-gradient(90deg, #fbbf24, #fb923c)',
             color: '#1f2937',
             fontWeight: '900',
-            fontSize: '1.25rem',
-            padding: '1.25rem 2rem',
-            borderRadius: '2rem',
-            border: '4px solid',
+            fontSize: 'clamp(1rem, 3vw, 1.25rem)',
+            padding: 'clamp(0.875rem, 2vw, 1.25rem) clamp(1rem, 3vw, 2rem)',
+            borderRadius: 'clamp(1rem, 3vw, 2rem)',
+            border: '3px solid',
             borderColor: loading || !name.trim() || !color ? 'rgba(156, 163, 175, 0.3)' : '#fcd34d',
             cursor: loading || !name.trim() || !color ? 'not-allowed' : 'pointer',
             transition: 'transform 0.3s',
             boxShadow: loading || !name.trim() || !color 
               ? 'none'
-              : '0 20px 40px rgba(251, 191, 36, 0.5)',
+              : '0 10px 30px rgba(251, 191, 36, 0.5)',
             opacity: loading || !name.trim() || !color ? 0.5 : 1,
             display: 'flex',
             alignItems: 'center',
@@ -490,8 +506,8 @@ export const CreateRoom: React.FC = () => {
         </button>
 
         <p style={{
-          marginTop: '1.5rem',
-          fontSize: '0.875rem',
+          marginTop: 'clamp(1rem, 2vw, 1.5rem)',
+          fontSize: 'clamp(0.75rem, 2vw, 0.875rem)',
           color: 'rgba(255, 255, 255, 0.7)',
           fontWeight: '500'
         }}>

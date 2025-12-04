@@ -10,13 +10,13 @@ interface Props {
 
 const SacadasHUD: React.FC<Props> = ({ count, total = 4, playerName, color = 'gray' }) => {
   return (
-    <div className="mb-4 p-3 rounded-lg shadow-lg bg-white border-2 flex items-center gap-3" style={{ borderColor: typeof color === 'string' ? color : undefined }}>
+    <div className="mb-2 sm:mb-4 p-2 sm:p-3 rounded-lg shadow-lg bg-white border-2 flex items-center gap-2 sm:gap-3" style={{ borderColor: typeof color === 'string' ? color : undefined }}>
       <div className="flex flex-col">
-        <span className="text-sm text-gray-500">Fichas sacadas</span>
-        <span className="text-2xl font-bold text-gray-800">{count}/{total}</span>
+        <span className="text-xs sm:text-sm text-gray-500">Fichas sacadas</span>
+        <span className="text-xl sm:text-2xl font-bold text-gray-800">{count}/{total}</span>
       </div>
       {playerName && (
-        <div className="ml-auto text-sm text-gray-600">{playerName}</div>
+        <div className="ml-auto text-xs sm:text-sm text-gray-600">{playerName}</div>
       )}
     </div>
   );

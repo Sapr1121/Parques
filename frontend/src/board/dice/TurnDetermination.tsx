@@ -151,11 +151,11 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 p-6 max-w-lg mx-auto">
+    <div className="flex flex-col items-center gap-4 sm:gap-6 p-3 sm:p-6 max-w-lg mx-auto">
       {/* Título */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold mb-2 text-purple-700">🎲 Determinación de Turnos</h2>
-        <p className="text-gray-600">
+        <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2 text-purple-700">🎲 Determinación de Turnos</h2>
+        <p className="text-gray-600 text-sm sm:text-base">
           {hayEmpate 
             ? `¡Empate con ${valorEmpate} puntos! Los empatados deben tirar de nuevo.`
             : 'Cada jugador lanza los dados. El que saque más alto comienza.'}
@@ -164,7 +164,7 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
 
       {/* Estado del turno */}
       {!finished && (
-        <div className={`w-full p-4 rounded-xl text-center font-bold ${
+        <div className={`w-full p-3 sm:p-4 rounded-xl text-center font-bold text-sm sm:text-base ${
           esMiTurno ? 'bg-green-100 border-2 border-green-400 text-green-700' : 'bg-gray-100 text-gray-600'
         }`}>
           {esMiTurno 
@@ -177,7 +177,7 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
       )}
 
       {/* Lista de jugadores y sus tiradas */}
-      <div className="w-full space-y-3">
+      <div className="w-full space-y-2 sm:space-y-3">
         {(hayEmpate ? jugadoresEmpatados : players).map((p: any) => {
           const color = p.color;
           const nombre = p.name || p.nombre;
@@ -187,11 +187,11 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
           return (
             <div 
               key={color} 
-              className={`flex items-center justify-between p-4 rounded-xl border-2 ${getColorBg(color)} ${esYo ? 'ring-2 ring-purple-400' : ''}`}
+              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 rounded-xl border-2 ${getColorBg(color)} ${esYo ? 'ring-2 ring-purple-400' : ''}`}
             >
-              <div className="flex items-center gap-3">
-                {esYo && <span className="text-lg">👉</span>}
-                <span className={`font-bold text-lg capitalize ${getColorText(color)}`}>
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-0">
+                {esYo && <span className="text-base sm:text-lg">👉</span>}
+                <span className={`font-bold text-base sm:text-lg capitalize ${getColorText(color)}`}>
                   {nombre}
                 </span>
                 {esYo && <span className="text-xs bg-purple-200 text-purple-700 px-2 py-1 rounded">Tú</span>}
@@ -199,13 +199,13 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
               
               <div className="text-right">
                 {roll ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🎲</span>
-                    <span className="font-mono text-lg">[{roll.dado1}] [{roll.dado2}]</span>
-                    <span className="text-xl font-extrabold text-purple-700">= {roll.suma}</span>
+                  <div className="flex items-center gap-1 sm:gap-2 justify-end">
+                    <span className="text-xl sm:text-2xl">🎲</span>
+                    <span className="font-mono text-sm sm:text-lg">[{roll.dado1}] [{roll.dado2}]</span>
+                    <span className="text-base sm:text-xl font-extrabold text-purple-700">= {roll.suma}</span>
                   </div>
                 ) : (
-                  <span className="text-gray-400 italic">Esperando...</span>
+                  <span className="text-gray-400 italic text-sm sm:text-base">Esperando...</span>
                 )}
               </div>
             </div>
@@ -215,32 +215,32 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
 
       {/* Botón de lanzar dados */}
       {!finished && esMiTurno && (!yaLance || estoyEnDesempate) && (
-        <div className="mt-4">
+        <div className="mt-2 sm:mt-4">
           <DiceRoller onRoll={handleRoll} disabled={false} />
         </div>
       )}
 
       {/* Mensaje de espera después de lanzar */}
       {!finished && yaLance && !esMiTurno && !estoyEnDesempate && (
-        <div className="text-center text-gray-500 italic">
+        <div className="text-center text-gray-500 italic text-sm sm:text-base">
           ✅ Ya lanzaste. Esperando a los demás jugadores...
         </div>
       )}
 
       {/* Resultado final */}
       {finished && ganador && (
-        <div className="w-full mt-6 p-6 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl border-4 border-yellow-400 text-center">
-          <div className="text-4xl mb-2">🏆</div>
-          <h3 className="text-2xl font-bold text-yellow-800 mb-4">¡Turnos Determinados!</h3>
+        <div className="w-full mt-4 sm:mt-6 p-4 sm:p-6 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-xl sm:rounded-2xl border-4 border-yellow-400 text-center">
+          <div className="text-3xl sm:text-4xl mb-2">🏆</div>
+          <h3 className="text-xl sm:text-2xl font-bold text-yellow-800 mb-3 sm:mb-4">¡Turnos Determinados!</h3>
           
-          <p className="text-lg mb-4">
+          <p className="text-base sm:text-lg mb-3 sm:mb-4">
             <span className="font-bold">{ganador.nombre}</span> ({ganador.color}) comienza la partida
           </p>
           
-          <div className="text-left bg-white/50 rounded-xl p-4">
-            <p className="font-bold text-gray-700 mb-2">📋 Orden de turnos:</p>
+          <div className="text-left bg-white/50 rounded-xl p-3 sm:p-4">
+            <p className="font-bold text-gray-700 mb-2 text-sm sm:text-base">📋 Orden de turnos:</p>
             {ordenFinal.map((j: any, idx: number) => (
-              <div key={j.color} className="flex items-center gap-2 py-1">
+              <div key={j.color} className="flex items-center gap-2 py-1 text-sm sm:text-base">
                 <span className="font-bold text-purple-600">{idx + 1}.</span>
                 <span className={`capitalize ${getColorText(j.color)}`}>{j.nombre}</span>
                 {j.color === miColor && <span className="text-xs bg-purple-200 text-purple-700 px-2 py-0.5 rounded">Tú</span>}
@@ -248,7 +248,7 @@ const TurnDetermination: React.FC<TurnDeterminationProps> = ({ players, myId, on
             ))}
           </div>
           
-          <p className="mt-4 text-gray-600 animate-pulse">
+          <p className="mt-3 sm:mt-4 text-gray-600 animate-pulse text-sm sm:text-base">
             🎮 Iniciando partida en breve...
           </p>
         </div>
