@@ -130,7 +130,7 @@ echo ""
 # ============================================
 # 6. VERIFICAR DEPENDENCIAS DE PYTHON
 # ============================================
-echo -e "${YELLOW}[6/6]${NC} Verificando dependencias de Python..."
+echo -e "${YELLOW}[6/7]${NC} Verificando dependencias de Python..."
 
 if [ -f "${PROJECT_ROOT}/requirements.txt" ]; then
     echo -e "${BLUE}ℹ️  Archivo requirements.txt encontrado${NC}"
@@ -144,6 +144,29 @@ if [ -f "${PROJECT_ROOT}/requirements.txt" ]; then
     fi
 else
     echo -e "${YELLOW}⚠️  No se encontró requirements.txt${NC}"
+fi
+echo ""
+
+# ============================================
+# 7. VERIFICAR BASE DE DATOS
+# ============================================
+echo -e "${YELLOW}[7/7]${NC} Verificando base de datos..."
+
+DB_DIR="${PROJECT_ROOT}/pythonserver/database"
+DB_FILE="${DB_DIR}/parques.db"
+
+if [ -d "${DB_DIR}" ]; then
+    echo -e "${GREEN}✅ Directorio database/ existe${NC}"
+    
+    if [ -f "${DB_FILE}" ]; then
+        echo -e "${GREEN}✅ Base de datos parques.db encontrada${NC}"
+        DB_SIZE=$(du -h "${DB_FILE}" | cut -f1)
+        echo -e "${BLUE}   Tamaño: ${DB_SIZE}${NC}"
+    else
+        echo -e "${BLUE}ℹ️  Base de datos no existe (se creará al iniciar el servidor)${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠️  Directorio database/ no existe${NC}"
 fi
 echo ""
 
@@ -169,5 +192,11 @@ echo "  • Frontend: http://localhost:5173"
 echo "  • Backend: http://localhost:3001"
 echo "  • Python Server: ws://localhost:8001"
 echo "  • Registry: tcp://localhost:9000"
+echo "  • Database: ${DB_FILE}"
+echo ""
+echo -e "${BLUE}🗄️ Base de Datos:${NC}"
+echo "  • SQLite3 (incluido en Python)"
+echo "  • Se crea automáticamente al iniciar el servidor"
+echo "  • Usuarios, estadísticas y partidas"
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
