@@ -1,6 +1,38 @@
 import React from 'react';
 import type { ColorJugador } from '../types/gameTypes';
 
+// Casillas de entrada a meta por color (donde entran al camino final)
+const ENTRADAS_META: Record<ColorJugador, number> = {
+  rojo: 33,    // Casilla segura antes de entrar al camino rojo
+  azul: 16,    // Casilla segura antes de entrar al camino azul
+  verde: 50,   // Casilla segura antes de entrar al camino verde
+  amarillo: 67 // Casilla segura antes de entrar al camino amarillo
+};
+
+/**
+ * Calcula cuántos pasos faltan para que una ficha EN_JUEGO llegue a su entrada de meta.
+ * Retorna null si la ficha no está cerca (más de 8 pasos).
+ */
+function calcularPasosAEntradaMeta(posicion: number, color: ColorJugador): number | null {
+  const entradaMeta = ENTRADAS_META[color];
+  let pasosHastaEntrada = 0;
+  
+  // Si la ficha está antes de su entrada de meta (sin dar la vuelta)
+  if (posicion <= entradaMeta) {
+    pasosHastaEntrada = entradaMeta - posicion;
+  } else {
+    // Si la ficha pasó su entrada, debe dar la vuelta al tablero (68 casillas totales)
+    pasosHastaEntrada = (68 - posicion) + entradaMeta;
+  }
+  
+  // Solo considerar si está cerca (8 pasos o menos, ya que luego tiene 7 casillas de camino meta)
+  if (pasosHastaEntrada <= 8) {
+    return pasosHastaEntrada;
+  }
+  
+  return null;
+}
+
 // Colores de las fichas
 const COLORES: Record<ColorJugador, string> = {
   rojo: '#C41E3A',
@@ -60,16 +92,27 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
     // O simplemente el menú está muy arriba en la pantalla
     (position.y < 120);
 
-  // Calcular pasos restantes:
-  // - Si la ficha está en CAMINO_META: pasos = 7 - posicion_meta
-  // - Si la ficha está EN_JUEGO: NO validar, puede moverse libremente por el tablero
+  // Calcular pasos restantes para llegar a la meta
   let pasosRestantes: number | null = null;
+  let mensaje: string = '';
+  
   if (fichaEstado === 'CAMINO_META' && posicionMeta !== undefined && posicionMeta !== null) {
-    // Solo cuando está en el camino final a la meta, limitar movimientos
+    // Caso 1: Ficha YA está en el camino final a la meta (sv1, sv2, ..., sv8/META)
+    // Cada posicion_meta representa una casilla del camino: 0=sv1, 1=sv2, ..., 7=sv8/META
     pasosRestantes = Math.max(0, 7 - posicionMeta);
+    mensaje = `Faltan ${pasosRestantes} paso(s) para META`;
+  } else if (fichaEstado === 'EN_JUEGO' && fichaPosicion !== undefined && fichaPosicion !== null) {
+    // Caso 2: Ficha está en el tablero principal, cerca de su entrada a meta
+    const pasosAEntrada = calcularPasosAEntradaMeta(fichaPosicion, fichaColor);
+    
+    if (pasosAEntrada !== null) {
+      // La ficha está cerca de su entrada (8 pasos o menos)
+      // Total de pasos = pasos hasta entrada + 8 pasos del camino meta
+      pasosRestantes = pasosAEntrada + 8;
+      mensaje = `A ${pasosAEntrada} paso(s) de entrar al camino final (+8 a META)`;
+    }
+    // Si pasosAEntrada es null, la ficha está lejos y puede moverse libremente
   }
-  // ✅ ELIMINADO: La validación incorrecta de "faltan 8 pasos desde la salida"
-  // Las fichas EN_JUEGO pueden moverse libremente por el tablero
 
   const dado1DisabledByMeta = pasosRestantes !== null ? dado1 > pasosRestantes : false;
   const dado2DisabledByMeta = pasosRestantes !== null ? dado2 > pasosRestantes : false;
@@ -114,8 +157,10 @@ const MiniMenuDados: React.FC<MiniMenuDadosProps> = ({
         </div>
 
         {/* Mostrar pasos restantes si aplica */}
-        {pasosRestantes !== null && (
-          <div className="text-center text-sm text-gray-600 mb-2">Faltan {pasosRestantes} paso(s) para META</div>
+        {pasosRestantes !== null && mensaje && (
+          <div className="text-center text-sm text-gray-600 mb-2 px-2">
+            {mensaje}
+          </div>
         )}
 
         {/* Opciones de dados */}
