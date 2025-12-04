@@ -42,9 +42,9 @@ const Dado: React.FC<{ valor: number; usado?: boolean; onClick?: () => void; sel
     <div
       onClick={seleccionable ? onClick : undefined}
       className={`
-        relative w-16 h-16 rounded-xl shadow-lg
+        relative w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl shadow-lg
         ${usado ? 'bg-gray-300 opacity-50' : 'bg-white'}
-        ${seleccionable && !usado ? 'cursor-pointer hover:scale-110 hover:shadow-xl ring-2 ring-purple-400' : ''}
+        ${seleccionable && !usado ? 'cursor-pointer hover:scale-105 sm:hover:scale-110 hover:shadow-xl ring-2 ring-purple-400' : ''}
         transition-all duration-200
       `}
       style={{
@@ -99,32 +99,32 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
   const puedeSeleccionarDado = puedeTomarAccion && fichaSeleccionada !== null;
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl p-6 w-80">
+    <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-3 sm:p-4 md:p-6 w-full max-w-xs sm:max-w-sm md:w-80">
       {/* Header con color del jugador */}
       <div 
-        className="flex items-center gap-3 mb-4 pb-3 border-b-2"
+        className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2"
         style={{ borderColor: miColor ? getColorHex(miColor) : '#e5e7eb' }}
       >
         <div 
-          className="w-4 h-4 rounded-full"
+          className="w-3 h-3 sm:w-4 sm:h-4 rounded-full"
           style={{ backgroundColor: miColor ? getColorHex(miColor) : '#9ca3af' }}
         />
-        <h3 className="text-lg font-bold text-gray-800">
+        <h3 className="text-base sm:text-lg font-bold text-gray-800">
           {esMiTurno ? '🎯 Tu Turno' : '⏳ Esperando...'}
         </h3>
       </div>
 
       {/* Dados */}
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-3 sm:gap-4">
         {puedeRelanzar && (
-          <div className="w-full text-center text-sm text-green-700 font-bold">
+          <div className="w-full text-center text-xs sm:text-sm text-green-700 font-bold">
             🎲 Dobles usados: puedes volver a lanzar
           </div>
         )}
         {dadosLanzados ? (
           <>
             {/* Dados visuales */}
-            <div className="flex gap-4 items-center">
+            <div className="flex gap-3 sm:gap-4 items-center">
               <Dado 
                 valor={dado1} 
                 usado={dado1Usado}
@@ -141,14 +141,14 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
 
             {/* Suma */}
             <div className="flex items-center gap-2">
-              <span className="text-gray-600">Suma:</span>
+              <span className="text-gray-600 text-sm sm:text-base">Suma:</span>
               <span 
-                className={`text-2xl font-bold ${esDoble ? 'text-purple-600' : 'text-gray-800'}`}
+                className={`text-xl sm:text-2xl font-bold ${esDoble ? 'text-purple-600' : 'text-gray-800'}`}
               >
                 {suma}
               </span>
               {esDoble && (
-                <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-sm font-bold">
+                <span className="bg-purple-100 text-purple-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-bold">
                   ¡DOBLES!
                 </span>
               )}
@@ -158,8 +158,8 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
             {puedeSeleccionarDado && !dado1Usado && !dado2Usado && (
               <button
                 onClick={() => onMoverFicha(3)}
-                className="w-full py-2 px-4 bg-gradient-to-r from-purple-500 to-indigo-500 
-                           text-white font-bold rounded-xl shadow-lg
+                className="w-full py-2 px-3 sm:px-4 bg-gradient-to-r from-purple-500 to-indigo-500 
+                           text-white font-bold rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-base
                            hover:from-purple-600 hover:to-indigo-600
                            transform hover:scale-105 transition-all"
               >
@@ -169,21 +169,21 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
 
             {/* Mensaje de ficha seleccionada */}
             {fichaSeleccionada && (
-              <div className="text-sm text-purple-600 font-medium animate-pulse">
+              <div className="text-xs sm:text-sm text-purple-600 font-medium animate-pulse text-center">
                 Ficha {fichaSeleccionada.id + 1} seleccionada - Elige un dado
               </div>
             )}
           </>
         ) : (
           /* Placeholder cuando no hay dados */
-          <div className="flex gap-4 items-center opacity-30">
-            <div className="w-16 h-16 rounded-xl bg-gray-200 border-2 border-gray-300" />
-            <div className="w-16 h-16 rounded-xl bg-gray-200 border-2 border-gray-300" />
+          <div className="flex gap-3 sm:gap-4 items-center opacity-30">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl bg-gray-200 border-2 border-gray-300" />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl bg-gray-200 border-2 border-gray-300" />
           </div>
         )}
 
         {/* Botones de acción */}
-        <div className="w-full space-y-2 mt-4">
+        <div className="w-full space-y-2 mt-3 sm:mt-4">
           {/* Botón Lanzar Dados */}
           {puedeLanzar && (
             <button
@@ -191,13 +191,13 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
                 onLanzarDados();
                 console.log('🎲 Dados lanzados, verificando estado...');
               }}
-              className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-500 
-                         text-white font-bold rounded-xl shadow-lg
+              className="w-full py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-green-500 to-emerald-500 
+                         text-white font-bold rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-base
                          hover:from-green-600 hover:to-emerald-600
                          transform hover:scale-105 transition-all
                          flex items-center justify-center gap-2"
             >
-              <span className="text-xl">🎲</span>
+              <span className="text-lg sm:text-xl">🎲</span>
               Lanzar Dados
             </button>
           )}
@@ -206,14 +206,14 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
           {puedesSacarTodas && (
             <button
               onClick={onSacarTodasDeCarcel}
-              className="w-full py-3 px-4 bg-gradient-to-r from-orange-500 to-red-500 
-                         text-white font-bold rounded-xl shadow-lg
+              className="w-full py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-orange-500 to-red-500 
+                         text-white font-bold rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-base
                          hover:from-orange-600 hover:to-red-600
                          transform hover:scale-105 transition-all
                          flex items-center justify-center gap-2
                          animate-pulse"
             >
-              <span className="text-xl">🔓</span>
+              <span className="text-lg sm:text-xl">🔓</span>
               ¡SACAR TODAS! ({fichasEnCarcel} fichas)
             </button>
           )}
@@ -222,13 +222,13 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
           {puedeSacarCarcel && !puedesSacarTodas && (
             <button
               onClick={onSacarDeCarcel}
-              className="w-full py-3 px-4 bg-gradient-to-r from-yellow-500 to-orange-500 
-                         text-white font-bold rounded-xl shadow-lg
+              className="w-full py-2.5 sm:py-3 px-3 sm:px-4 bg-gradient-to-r from-yellow-500 to-orange-500 
+                         text-white font-bold rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-base
                          hover:from-yellow-600 hover:to-orange-600
                          transform hover:scale-105 transition-all
                          flex items-center justify-center gap-2"
             >
-              <span className="text-xl">🔓</span>
+              <span className="text-lg sm:text-xl">🔓</span>
               Sacar de Cárcel ({fichasEnCarcel} en cárcel)
             </button>
           )}
@@ -236,13 +236,13 @@ const DadosPanel: React.FC<DadosPanelProps> = ({
 
         {/* Estado */}
         {!esMiTurno && (
-          <div className="text-center text-gray-500 italic mt-2">
+          <div className="text-center text-gray-500 italic mt-2 text-xs sm:text-sm">
             Espera tu turno para jugar
           </div>
         )}
 
         {esMiTurno && dadosLanzados && !fichaSeleccionada && (
-          <div className="text-center text-purple-600 font-medium mt-2">
+          <div className="text-center text-purple-600 font-medium mt-2 text-xs sm:text-sm">
             👆 Selecciona una ficha para mover
           </div>
         )}

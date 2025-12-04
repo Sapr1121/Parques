@@ -34,7 +34,20 @@ const Lobby = () => {
 
   // Copiar código de sala
   const handleCopy = () => {
-    navigator.clipboard.writeText(roomCode);
+    // Método alternativo que funciona en HTTP (no solo HTTPS)
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(roomCode);
+    } else {
+      // Fallback para HTTP
+      const textArea = document.createElement('textarea');
+      textArea.value = roomCode;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -204,23 +217,23 @@ const Lobby = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '1rem'
+      padding: 'clamp(0.5rem, 2vw, 1rem)'
     }}>
       <div style={{
         background: 'rgba(255, 255, 255, 0.1)',
         backdropFilter: 'blur(20px)',
-        borderRadius: '2rem',
-        padding: '2rem',
+        borderRadius: 'clamp(1rem, 3vw, 2rem)',
+        padding: 'clamp(1rem, 3vw, 2rem)',
         color: 'white',
         maxWidth: '500px',
         width: '100%',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-        border: '4px solid rgba(255, 255, 255, 0.3)'
+        border: '3px solid rgba(255, 255, 255, 0.3)'
       }}>
         <h2 style={{
-          fontSize: '2rem',
+          fontSize: 'clamp(1.5rem, 4vw, 2rem)',
           fontWeight: '900',
-          marginBottom: '1.5rem',
+          marginBottom: 'clamp(1rem, 2vw, 1.5rem)',
           textAlign: 'center',
           background: 'linear-gradient(90deg, #fef08a, #fbcfe8)',
           WebkitBackgroundClip: 'text',
@@ -234,20 +247,21 @@ const Lobby = () => {
           <div style={{
             background: 'rgba(251, 191, 36, 0.2)',
             border: '2px solid rgba(251, 191, 36, 0.5)',
-            borderRadius: '1rem',
-            padding: '1rem',
-            marginBottom: '1rem',
+            borderRadius: 'clamp(0.75rem, 2vw, 1rem)',
+            padding: 'clamp(0.75rem, 2vw, 1rem)',
+            marginBottom: 'clamp(0.75rem, 2vw, 1rem)',
             textAlign: 'center'
           }}>
-            <p style={{ fontSize: '0.875rem', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.8)' }}>
+            <p style={{ fontSize: 'clamp(0.75rem, 2vw, 0.875rem)', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.8)' }}>
               Comparte este código:
             </p>
             <div style={{
-              fontSize: '1.5rem',
+              fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
               fontWeight: '900',
               letterSpacing: '0.1em',
               color: '#fde047',
-              marginBottom: '0.5rem'
+              marginBottom: '0.5rem',
+              wordBreak: 'break-all'
             }}>
               {roomCode}
             </div>
@@ -257,10 +271,10 @@ const Lobby = () => {
                 background: copied ? '#22c55e' : 'rgba(255,255,255,0.2)',
                 border: 'none',
                 borderRadius: '0.5rem',
-                padding: '0.5rem 1rem',
+                padding: 'clamp(0.375rem, 1vw, 0.5rem) clamp(0.75rem, 2vw, 1rem)',
                 color: 'white',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
+                fontSize: 'clamp(0.75rem, 2vw, 0.875rem)',
                 fontWeight: '600'
               }}
             >
@@ -275,9 +289,10 @@ const Lobby = () => {
             background: 'rgba(239, 68, 68, 0.2)',
             border: '2px solid rgba(239, 68, 68, 0.5)',
             borderRadius: '0.5rem',
-            padding: '0.75rem',
-            marginBottom: '1rem',
-            textAlign: 'center'
+            padding: 'clamp(0.5rem, 1.5vw, 0.75rem)',
+            marginBottom: 'clamp(0.75rem, 2vw, 1rem)',
+            textAlign: 'center',
+            fontSize: 'clamp(0.8rem, 2vw, 1rem)'
           }}>
             ⚠️ Desconectado del servidor
           </div>
@@ -289,40 +304,43 @@ const Lobby = () => {
             background: 'rgba(52, 211, 153, 0.2)',
             border: '2px solid rgba(52, 211, 153, 0.5)',
             borderRadius: '0.5rem',
-            padding: '0.75rem',
-            marginBottom: '1rem',
+            padding: 'clamp(0.5rem, 1.5vw, 0.75rem)',
+            marginBottom: 'clamp(0.75rem, 2vw, 1rem)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem'
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+            fontSize: 'clamp(0.8rem, 2vw, 1rem)'
           }}>
             <div style={{
-              width: '16px',
-              height: '16px',
+              width: 'clamp(12px, 3vw, 16px)',
+              height: 'clamp(12px, 3vw, 16px)',
               borderRadius: '50%',
+              flexShrink: 0,
               background: miInfo.color === 'amarillo' ? '#fbbf24' :
                          miInfo.color === 'azul' ? '#3b82f6' :
                          miInfo.color === 'rojo' ? '#ef4444' :
                          miInfo.color === 'verde' ? '#22c55e' : '#9ca3af'
             }} />
             <span>Tú: <strong>{miInfo.nombre}</strong> ({miInfo.color})</span>
-            {esAdmin && <span style={{ marginLeft: 'auto', background: '#fbbf24', color: '#1f2937', padding: '0.125rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem', fontWeight: '700' }}>Admin</span>}
+            {esAdmin && <span style={{ marginLeft: 'auto', background: '#fbbf24', color: '#1f2937', padding: '0.125rem 0.5rem', borderRadius: '0.25rem', fontSize: 'clamp(0.65rem, 1.5vw, 0.75rem)', fontWeight: '700' }}>Admin</span>}
           </div>
         )}
 
         {/* Lista de jugadores */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '1rem',
-          padding: '1rem',
-          marginBottom: '1.5rem'
+          borderRadius: 'clamp(0.75rem, 2vw, 1rem)',
+          padding: 'clamp(0.75rem, 2vw, 1rem)',
+          marginBottom: 'clamp(1rem, 2vw, 1.5rem)'
         }}>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', fontWeight: '700', marginBottom: 'clamp(0.75rem, 2vw, 1rem)' }}>
             Jugadores conectados ({conectados}/{MAX_JUGADORES})
           </h3>
           {jugadores.length === 0 && !miInfo ? (
-            <div style={{ color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', textAlign: 'center' }}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', textAlign: 'center', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
               <p>👥 {conectados} jugador{conectados !== 1 ? 'es' : ''} en la sala</p>
-              <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+              <p style={{ fontSize: 'clamp(0.75rem, 1.8vw, 0.875rem)', marginTop: '0.5rem' }}>
                 Esperando jugadores...
               </p>
             </div>
@@ -333,16 +351,19 @@ const Lobby = () => {
                 <li key={idx} style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem',
+                  gap: 'clamp(0.5rem, 1.5vw, 0.75rem)',
+                  padding: 'clamp(0.5rem, 1.5vw, 0.75rem)',
                   background: 'rgba(255,255,255,0.1)',
                   borderRadius: '0.5rem',
-                  marginBottom: '0.5rem'
+                  marginBottom: '0.5rem',
+                  flexWrap: 'wrap',
+                  fontSize: 'clamp(0.8rem, 2vw, 1rem)'
                 }}>
                   <div style={{
-                    width: '12px',
-                    height: '12px',
+                    width: 'clamp(10px, 2.5vw, 12px)',
+                    height: 'clamp(10px, 2.5vw, 12px)',
                     borderRadius: '50%',
+                    flexShrink: 0,
                     background: j.color === 'amarillo' ? '#fbbf24' :
                                j.color === 'azul' ? '#3b82f6' :
                                j.color === 'rojo' ? '#ef4444' :
@@ -351,7 +372,7 @@ const Lobby = () => {
                   <span style={{ fontWeight: '600' }}>
                     {j.nombre || `Jugador ${idx + 1}`}
                   </span>
-                  <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(0.7rem, 1.8vw, 0.875rem)' }}>
                     ({j.color})
                   </span>
                   {idx === 0 && esAdmin && (
@@ -361,7 +382,7 @@ const Lobby = () => {
                       color: '#1f2937',
                       padding: '0.25rem 0.5rem',
                       borderRadius: '0.25rem',
-                      fontSize: '0.75rem',
+                      fontSize: 'clamp(0.65rem, 1.5vw, 0.75rem)',
                       fontWeight: '700'
                     }}>Admin</span>
                   )}
@@ -382,9 +403,9 @@ const Lobby = () => {
                   background: 'linear-gradient(90deg, #34d399, #10b981)',
                   color: 'white',
                   fontWeight: '900',
-                  fontSize: '1.125rem',
-                  padding: '1rem 2rem',
-                  borderRadius: '1rem',
+                  fontSize: 'clamp(0.9rem, 2.5vw, 1.125rem)',
+                  padding: 'clamp(0.75rem, 2vw, 1rem) clamp(1rem, 3vw, 2rem)',
+                  borderRadius: 'clamp(0.75rem, 2vw, 1rem)',
                   border: 'none',
                   cursor: 'pointer',
                   boxShadow: '0 10px 30px rgba(52, 211, 153, 0.5)',
@@ -398,15 +419,15 @@ const Lobby = () => {
             ) : (
               <div style={{
                 textAlign: 'center',
-                padding: '1rem',
+                padding: 'clamp(0.75rem, 2vw, 1rem)',
                 background: 'rgba(251, 191, 36, 0.2)',
-                borderRadius: '1rem',
+                borderRadius: 'clamp(0.75rem, 2vw, 1rem)',
                 border: '2px solid rgba(251, 191, 36, 0.5)'
               }}>
-                <p style={{ fontWeight: '600' }}>
+                <p style={{ fontWeight: '600', fontSize: 'clamp(0.85rem, 2vw, 1rem)' }}>
                   ⏳ Se necesitan entre 2 y 4 jugadores para iniciar
                 </p>
-                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.5rem' }}>
+                <p style={{ fontSize: 'clamp(0.75rem, 1.8vw, 0.875rem)', color: 'rgba(255,255,255,0.7)', marginTop: '0.5rem' }}>
                   Comparte el código de la sala con tus amigos
                 </p>
               </div>
@@ -418,25 +439,25 @@ const Lobby = () => {
         {!esAdmin && (
           <div style={{
             textAlign: 'center',
-            padding: '1.5rem',
+            padding: 'clamp(1rem, 2.5vw, 1.5rem)',
             background: 'rgba(96, 165, 250, 0.2)',
-            borderRadius: '1rem',
+            borderRadius: 'clamp(0.75rem, 2vw, 1rem)',
             border: '2px solid rgba(96, 165, 250, 0.5)'
           }}>
             <div style={{
               display: 'flex',
               justifyContent: 'center',
               gap: '0.5rem',
-              marginBottom: '1rem'
+              marginBottom: 'clamp(0.75rem, 2vw, 1rem)'
             }}>
-              <div style={{ width: '10px', height: '10px', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite' }} />
-              <div style={{ width: '10px', height: '10px', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite 0.2s' }} />
-              <div style={{ width: '10px', height: '10px', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite 0.4s' }} />
+              <div style={{ width: 'clamp(8px, 2vw, 10px)', height: 'clamp(8px, 2vw, 10px)', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite' }} />
+              <div style={{ width: 'clamp(8px, 2vw, 10px)', height: 'clamp(8px, 2vw, 10px)', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite 0.2s' }} />
+              <div style={{ width: 'clamp(8px, 2vw, 10px)', height: 'clamp(8px, 2vw, 10px)', background: '#60a5fa', borderRadius: '50%', animation: 'pulse 1.5s infinite 0.4s' }} />
             </div>
-            <p style={{ fontWeight: '700', fontSize: '1.125rem' }}>
+            <p style={{ fontWeight: '700', fontSize: 'clamp(0.9rem, 2.5vw, 1.125rem)' }}>
               ⏳ Esperando que el anfitrión inicie la partida...
             </p>
-            <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.5rem' }}>
+            <p style={{ fontSize: 'clamp(0.75rem, 1.8vw, 0.875rem)', color: 'rgba(255,255,255,0.7)', marginTop: '0.5rem' }}>
               La partida comenzará pronto
             </p>
           </div>
@@ -444,11 +465,12 @@ const Lobby = () => {
 
         {mensaje && (
           <p style={{
-            marginTop: '1rem',
-            padding: '0.75rem',
+            marginTop: 'clamp(0.75rem, 2vw, 1rem)',
+            padding: 'clamp(0.5rem, 1.5vw, 0.75rem)',
             background: 'rgba(255,255,255,0.1)',
             borderRadius: '0.5rem',
-            textAlign: 'center'
+            textAlign: 'center',
+            fontSize: 'clamp(0.8rem, 2vw, 1rem)'
           }}>
             {mensaje}
           </p>

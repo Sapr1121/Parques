@@ -6,6 +6,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    port: 5174 // Cambia este número si quieres otro puerto
+    port: 5173,
+    host: true, // Permite conexiones desde otras máquinas en la red
   }
 })

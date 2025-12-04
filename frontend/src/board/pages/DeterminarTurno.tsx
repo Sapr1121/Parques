@@ -29,12 +29,12 @@ const DeterminarTurno: React.FC = () => {
   }, [ordenFinal, navigate, playerInfo, myId, players]);
 
   if (!players || myId === undefined) {
-    return <div className="p-8 text-center text-red-600 font-bold">Error: No hay datos de jugadores.</div>;
+    return <div className="p-4 sm:p-8 text-center text-red-600 font-bold text-sm sm:text-base">Error: No hay datos de jugadores.</div>;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 to-blue-100">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-xl w-full">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 to-blue-100 p-2 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-8 max-w-xl w-full">
         <TurnDetermination players={players} myId={myId} onFinish={setOrdenFinal} />
       </div>
     </div>
